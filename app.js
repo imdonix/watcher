@@ -7,6 +7,6 @@ const { request } = require('http')
 const app = express()
 const proc = new Processor()
 
-app.listen(settings.PORT, () => console.log(`API running on (${settings.PORT})`))
+app.listen(settings.PORT, () => console.log(`App started on (${settings.PORT})`))
 proc.start()
 

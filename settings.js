@@ -4,5 +4,7 @@ module.exports = {
         user: 'jofogas.watcher@gmail.com',
         pass: 'Sv5g9pQjtJ4xr5p8M54Z5Qq2tYvDbSTetYRQpYVZz4rJjGmZ34NX6qWEqMBLDpLG'
     },
-    USER: "tamas.donix@gmail.com"
+    USER: "tamas.donix@gmail.com",
+    SCRAP: 5,
+    NOTIFY: 8
 }
