@@ -1,0 +1,17 @@
+{
+  "name": "jofogas-watcher",
+  "version": "0.0.1",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "author": "donix",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "jofogas-scrapper": "github:imdonix/jofogas-scrapper",
+    "node-schedule": "^1.3.2",
+    "nodemailer": "^6.4.17"
+  }
+}
