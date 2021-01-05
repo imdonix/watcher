@@ -3,6 +3,7 @@ const ejs = require('ejs');
 const schedule = require('node-schedule');
 const scrap = require('jofogas-scrapper');
 const send = require('./mailer')
+const settings = require('./settings')
 
 class Processor
 {
@@ -13,38 +14,80 @@ class Processor
 
     start()
     {   
-        fs.readFile('data/memory.json', (err, data) =>
+        this.memoryLoad()
+        .then(this.routineLoad())
+        .then(() =>
         {
-            if(!err)
-            {
-                this.notifications = JSON.parse(data)
-                console.log('[Processor] Memory loaded.')
-            }
-            else
-                this.notifications = []
-        })
-
-        fs.readFile('data/routines.json', (err, data) =>
-        {
-            if(!err)
-            {
-                this.routines = JSON.parse(data)
-                console.log('[Processor] Routines loaded.')
-            }
-            else
-            {
-                this.routines = []
-                console.error('!! [Processor] Routines cant be loaded. ' + err)
-            }
-
-            let scrapper = schedule.scheduleJob('*/1 * * * *', this.scrap.bind(this))
-            let notifier  = schedule.scheduleJob('*/2 * * * *', this.nofity.bind(this))
+            let scrapper = schedule.scheduleJob(`*/${settings.SCRAP} * * * *`, this.scrap.bind(this))
+            let notifier  = schedule.scheduleJob(`* ${settings.NOTIFY} * * *`, this.nofity.bind(this))
             this.schedules = [scrapper, notifier]
-
+    
             console.log("[Processor] running.")
+        })
+        .catch(err =>
+        {
+            console.log("!! [Processor] cant be started.")
         })
     }
 
+    reloadRoutines()
+    {
+        this.routineLoad()
+        .then(() => 
+        {
+            console.log("[Processor] reload done.")
+        })
+        .catch(err =>
+        {
+            console.log("[Processor] reload failed.")
+        })
+    }
+
+    getMemory()
+    {
+        return this.notifications;
+    }
+
+    memoryLoad()
+    {
+        return new Promise(res =>
+        {
+            fs.readFile('data/memory.json', (err, data) =>
+            {
+                if(!err)
+                {
+                    this.notifications = JSON.parse(data)
+                    console.log('[Processor] Memory loaded.')
+                }
+                else
+                    this.notifications = []
+
+                res()
+            })
+        })
+    }
+
+    routineLoad()
+    {
+        return new Promise((res, rej) =>
+        {
+            fs.readFile('data/routines.json', (err, data) =>
+            {
+                if(!err)
+                {
+                    this.routines = JSON.parse(data)
+                    console.log('[Processor] Routines loaded.')
+                    res()
+                }
+                else
+                {
+                    this.routines = []
+                    console.error('!! [Processor] Routines cant be loaded. ' + err)
+                    rej(err)
+                }
+            })
+        })
+    }
 
     scrap()
     {
