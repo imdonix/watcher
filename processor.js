@@ -141,7 +141,7 @@ class Processor
     createNiceReport(items)
     {
         this.preatyPrice(items)
-        let html = ejs.render(fs.readFileSync('./public/mail.ejs', 'utf-8'), {items: items});
+        let html = ejs.render(fs.readFileSync('./views/mail.ejs', 'utf-8'), {items: items});
         return html
     }
 
