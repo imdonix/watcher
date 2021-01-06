@@ -37,4 +37,4 @@ npm start
 
 ## Usage
 
-![In use](https://github.com/imdonix/jofogas-watcher/tree/main/doc/preview.png)
+![In use](https://raw.githubusercontent.com/imdonix/jofogas-watcher/main/doc/preview.png)
