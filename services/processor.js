@@ -2,19 +2,15 @@ const fs = require('fs')
 const ejs = require('ejs');
 const schedule = require('node-schedule');
 const scrap = require('jofogas-scrapper');
+
 const send = require('./mailer')
-const settings = require('./settings')
+const settings = require('../settings')
 
 class Processor
 {
-
-    routines
-    schedules
-    notifications
-
     start()
     {   
-        this.memoryLoad()
+        return this.memoryLoad()
         .then(this.routineLoad())
         .then(() =>
         {

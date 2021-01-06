@@ -1,14 +1,16 @@
 {
   "name": "jofogas-watcher",
   "version": "0.0.1",
-  "description": "",
+  "description": "A small node.js application which check jofogas.hu for you.",
   "main": "app.js",
-  "scripts": {
+  "scripts": 
+  {
     "start": "node app.js"
   },
   "author": "donix",
   "license": "ISC",
-  "dependencies": {
+  "dependencies": 
+  {
     "ejs": "^3.1.5",
     "express": "^4.17.1",
     "jofogas-scrapper": "github:imdonix/jofogas-scrapper",

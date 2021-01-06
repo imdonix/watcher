@@ -1,9 +1,9 @@
 const express = require('express')
 const fs = require('fs')
+
 const settings = require('./settings')
-const Processor = require('./processor')
-const { cyrb53 } = require('./crypto')
-const { request } = require('http')
+const Processor = require('./services/processor')
+const { cyrb53 } = require('./services/crypto')
 
 const app = express()
 const proc = new Processor()
@@ -46,6 +46,5 @@ app.post('/memory', (_,res) =>
     res.json(proc.getMemory())
 })
 
-
 proc.start()
-app.listen(settings.PORT, () => console.log(`App started on (${settings.PORT})`))
+.then(() => app.listen(settings.PORT, () => console.log(`App started on (${settings.PORT})`)))
