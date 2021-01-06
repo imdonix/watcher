@@ -9,22 +9,25 @@ const upload = document.querySelector('#upload')
 
 const routinesList = document.querySelector('#routines')
 const routinesCount = document.querySelector('#routinesCount')
+const routinesUnsaved = document.querySelector('#unsaved')
 
-let routines, selected
+const memoryList = document.querySelector('#memory')
+const memoryCount = document.querySelector('#memoryCount')
+
+let routines, selected, progress
 
 add.addEventListener('click', modify)
 remove.addEventListener('click', deleteRoutine)
+upload.addEventListener('click', uploadRoutine)
 
 init()
 
 function init()
 {
     loadRoutines()
-    .then(() => 
-    {
-        selected = -1
-        render()
-    })
+    loadMemory()
+    .then(data => renderMemory(data))
+    .catch(error => {console.log(error)})
 }
 
 function modify()
@@ -37,26 +40,48 @@ function modify()
     else
         routines[selected] = createRoutineFromForm()
 
+    progress = true
     render()
 }
 
 function deleteRoutine()
 {
     if(selected >= 0 && selected < routines.length)
+    {
         routines = routines.slice(0, selected).concat(routines.slice(selected + 1, routines.length))
+        progress = true
+    }
 
     selected = -1
+
 
     render()
 }
 
 function loadRoutines()
 {
-    return new Promise(res =>
+    return fetch('download', { method: 'POST' })
+    .then(response => response.json())
+    .then((data) => 
     {
-        routines = [{"keyword": "iphone 11","domain": "https://www.jofogas.hu/budapest","min": 100000,"max": 500000}, {"keyword": "fullhd monitor","domain": "https://www.jofogas.hu/budapest","min": 100000,"max": 500000}]
-        res()
+        progress = false
+        routines = data
+        selected = -1
+        render()
     })
+    .catch(err => 
+    {
+        alert('Routines cant be donwloaded. - ' + err)
+        routines = []
+        selected = -1
+        render()
+    })
+}
+
+function loadMemory()
+{
+    return fetch('memory', { method: 'POST' })
+    .then(response => response.json())
 }
 
 function handle(index)
@@ -65,15 +90,94 @@ function handle(index)
     render()
 }
 
+function uploadRoutine()
+{
+    let password = prompt("Enter the master password");
+
+    return fetch('upload', 
+    { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({pass: cyrb53(password) , data : routines}),
+    })
+    .then(response => 
+    {
+        if(response.status == 200)
+        {
+            alert('Routines updated')
+            loadRoutines()
+        }
+        else if(response.status == 401)
+        {
+            alert('Bad master password')
+        }
+    })
+    .catch(error => alert('Routines cant be updated - ' + error))
+    
+}
+
 function render()
 {
     routinesCount.textContent = routines.length
+    routinesUnsaved.classList.toggle('hidden', !progress)
+
     routinesList.innerHTML = ''
     routinesList.appendChild(generateNew())
+
     let iterator = 0
     for (const routine of routines) routinesList.appendChild(generateRoutineDOM(routine, iterator++))
     
     fillForm()
+}
+
+function renderMemory(items)
+{
+    memoryList.innerHTML = ''
+    memoryCount.innerText = items.length    
+
+    for(const item of items.reverse())
+    {
+        let li = document.createElement('li')
+        let a = document.createElement('a')
+        li.classList.add('list-group-item')
+        a.href = item.url
+        li.innerText = item.name
+        li.appendChild(document.createElement('br'))
+        li.appendChild(createFoundbadge(item))
+        li.appendChild(createValueBadge(item))
+        li.appendChild(createSentBadge(item))
+        a.appendChild(li)
+        memoryList.appendChild(a)
+    }
+}
+
+function createValueBadge(item)
+{
+    let span = document.createElement('span')
+    span.classList.add('badge')
+    span.classList.add('badge-info')
+    span.innerText = item.price.toString() + ' Ft'
+    return span
+}
+
+function createSentBadge(item)
+{
+    let span = document.createElement('span')
+    span.classList.add('badge')
+    span.classList.add( item.sent ? 'badge-success' : 'badge-primary')
+    span.innerText  = item.sent ? 'Sent' : 'In queue'
+    return span
+}
+
+function createFoundbadge(item)
+{
+    let span = document.createElement('span')
+    span.classList.add('badge')
+    span.classList.add('badge-light')
+    span.innerText = item.found
+    return span
 }
 
 function generateRoutineDOM(routine, place)
@@ -139,4 +243,18 @@ function createRoutineFromForm()
 function niceNumber(x) 
 {
     return x.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function cyrb53(str)
+{
+    let h1 = 0xdeadbeef ^ 14, h2 = 0x41c6ce57 ^ 14;
+    for (let i = 0, ch; i < str.length; i++) 
+    {
+        ch = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1>>>16), 2246822507) ^ Math.imul(h2 ^ (h2>>>13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2>>>16), 2246822507) ^ Math.imul(h1 ^ (h1>>>13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1>>>0);
 }

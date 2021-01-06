@@ -8,6 +8,7 @@
     integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" 
     crossorigin="anonymous">
     <title>Watcher</title>
+    <style>.hidden { visibility: hidden; }</style>
 </head>
 <body>  
     <div class="container">
@@ -31,15 +32,17 @@
             </div>
             <div class="col-sm">
                 <hr>
-                <h3>Active routines <span class="badge badge-primary" id="routinesCount">?</span></h3>
+                <h3>Active routines <span class="badge badge-primary" id="routinesCount">?</span> <span class="badge badge-danger hidden" id="unsaved">unsaved</span></h3>
                 <ul class="list-group" id="routines">
-                    <li class="list-group-item"> monitor full hd <span class="badge badge-info">50 000Ft - 30 000Ft</span></li>
-                    <li class="list-group-item"> New </li>
+                    <li class="list-group-item">Create New </li>
                 </ul>
             </div>
             <div class="col-sm">
                 <hr>
-                <h3>Items in notify <span class="badge badge-primary" id="routinesCount">?</span></h3>
+                <h3>Items in notify <span class="badge badge-primary" id="memoryCount">?</span></h3>
+                <ul class="list-group" id="memory">
+
+                </ul>
             </div>
         </div>
     </div>
