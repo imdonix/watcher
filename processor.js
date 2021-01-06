@@ -98,7 +98,7 @@ class Processor
                 domain: routine.domain,
                 minPrice : routine.min,
                 maxPrice : routine.max,
-                sleep : Math.floor(Math.random() * Math.floor(2000)),
+                sleep : Math.floor(Math.random() * Math.floor(2000)) + 100,
                 enableCompany : false,
                 enablePost: false
             }
