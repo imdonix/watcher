@@ -19,7 +19,7 @@ class Processor
         .then(() =>
         {
             let scrapper = schedule.scheduleJob(`*/${settings.SCRAP} * * * *`, this.scrap.bind(this))
-            let notifier  = schedule.scheduleJob(`* ${settings.NOTIFY} * * *`, this.nofity.bind(this))
+            let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, this.nofity.bind(this))
             this.schedules = [scrapper, notifier]
     
             console.log("[Processor] running.")
