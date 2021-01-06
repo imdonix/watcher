@@ -2,6 +2,7 @@ const express = require('express')
 const fs = require('fs')
 const settings = require('./settings')
 const Processor = require('./processor')
+const { cyrb53 } = require('./crypto')
 const { request } = require('http')
 
 const app = express()
@@ -13,13 +14,19 @@ app.use(express.static('public'))
 app.post('/upload', (req,res) =>
 {
     let data = req.body.data;
+    let pass = req.body.pass
     if(data)
     {
-        fs.writeFile('./data/routines.json', JSON.stringify(data), () => 
+        if(pass && pass == cyrb53(settings.MASTER))
         {
-            proc.reloadRoutines()
-            res.status(200).send()
-        })
+            fs.writeFile('./data/routines.json', JSON.stringify(data), () => 
+            {
+                proc.reloadRoutines()
+                res.status(200).send()
+            })
+        }
+        else
+            res.status(401).send()
     }
     else
         res.status(500).send()
