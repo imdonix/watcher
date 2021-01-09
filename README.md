@@ -9,6 +9,7 @@ This app makes you to easily find "good deals" on Jófogás.hu.
 ```bash
 git clone https://github.com/imdonix/jofogas-watcher.git
 cd jofogas-watcher
+npm update
 ```
 
 2. Create a new or use a existing Gmail account for nodemailer - [Help](https://nodemailer.com/usage/using-gmail/)  
