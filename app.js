@@ -46,5 +46,10 @@ app.post('/memory', (_,res) =>
     res.json(proc.getMemory())
 })
 
+app.get('/scrappers', (_,res) => 
+{
+    res.json(proc.getScrappers())
+})
+
 proc.start()
 .then(() => app.listen(settings.PORT, () => console.log(`[HTTP] started on (${settings.PORT})`)))
