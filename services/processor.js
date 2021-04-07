@@ -106,26 +106,24 @@ class Processor
     {
         for(let routine of this.routines)
         {
-            let settings = {
-                depht: 10,
-                domain: routine.domain,
-                minPrice : routine.min,
-                maxPrice : routine.max,
-                sleep : Math.floor(Math.random() * Math.floor(2000)) + 100,
-                enableCompany : false,
-                enablePost: false
-            }
+            let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
 
-            scrap(routine.keyword, settings, items =>
+            if(engine)
             {
-                for(let item of items)
+                engine.scrap(routine)
+                .then(items => 
+                {
+                    for(let item of items)
                     if(!this.notifications.find(pre => pre.id == item.id))
                     {
                         item.found = this.niceDate()
                         this.notifications.push(item)
                     }
-                console.log(`[${this.niceDate()}] [Srapper] {${routine.keyword}} found: ${items.length}, items in memory: ${this.notifications.length}`)
-            })
+                    console.log(`[${this.niceDate()}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
+                })
+            }
+            else
+                console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
         }
     }
 
