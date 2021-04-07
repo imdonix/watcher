@@ -3,6 +3,8 @@ const domain = document.querySelector('#domain')
 const min = document.querySelector('#min')
 const max = document.querySelector('#max')
 
+const engineDisplay = document.querySelector('#engineDisplay')
+const form = document.querySelector('#form')
 const add = document.querySelector('#add')
 const remove = document.querySelector('#remove')
 const upload = document.querySelector('#upload')
@@ -15,7 +17,7 @@ const memoryList = document.querySelector('#memory')
 const memoryCount = document.querySelector('#memoryCount')
 const memoryCountMax = 10
 
-let routines, selected, progress
+let routines, selected, progress, engines
 
 add.addEventListener('click', modify)
 remove.addEventListener('click', deleteRoutine)
@@ -25,8 +27,9 @@ init()
 
 function init()
 {
-    loadRoutines()
-    loadMemory()
+    loadEngines()
+    .then(() => loadRoutines())
+    .then(() => loadMemory())
     .then(data => renderMemory(data))
     .catch(error => {console.log(error)})
 }
@@ -59,6 +62,17 @@ function deleteRoutine()
     render()
 }
 
+function loadEngines()
+{
+    return fetch('scrappers')
+    .then(response => response.json())
+    .then((data) => {
+        engines = data
+        renderEngines()
+        return Promise.resolve()
+    })
+}
+
 function loadRoutines()
 {
     return fetch('download')
@@ -69,13 +83,14 @@ function loadRoutines()
         routines = data
         selected = -1
         render()
+        return Promise.resolve()
     })
     .catch(err => 
     {
-        alert('Routines cant be donwloaded. - ' + err)
         routines = []
         selected = -1
         render()
+        return Promise.reject(err)
     })
 }
 
@@ -155,6 +170,19 @@ function renderMemory(items)
     }
 }
 
+function renderEngines()
+{
+    for(const engine of engines)
+    {
+        let span = document.createElement('span')
+        span.classList.add('badge')
+        span.classList.add('badge-dark')
+        span.innerText = ` ${engine.name} `
+        engineDisplay.appendChild(span)
+        engineDisplay.innerHTML += "&nbsp"
+    }
+}
+
 function createValueBadge(item)
 {
     let span = document.createElement('span')
@@ -185,7 +213,8 @@ function createFoundbadge(item)
 function generateRoutineDOM(routine, place)
 {
     let li = document.createElement('li')
-    let span = document.createElement('span')
+    
+    let engine = document.createElement('span')
     li.classList.add('list-group-item')
     li.classList.add('d-flex')
     li.classList.add('justify-content-between')
@@ -196,11 +225,26 @@ function generateRoutineDOM(routine, place)
         const pointer = place
         handle(pointer)
     })
-    li.innerText = routine.keyword
-    span.classList.add('badge')
-    span.classList.add('badge-info')
-    span.innerText = `${niceNumber(routine.min)} - ${niceNumber(routine.max)} Ft`
-    li.appendChild(span)
+
+    li.innerText = routine.keywords && routine.keywords != ""  ? routine.keywords : "/All/"
+
+    if(routine.minPrice && routine.maxPrice)
+    {
+        let span = document.createElement('span')
+        span.classList.add('badge')
+        span.classList.add('badge-info')
+        span.innerText = `${niceNumber(routine.minPrice)} - ${niceNumber(routine.maxPrice)} Ft`
+        li.appendChild(span)
+    }
+
+
+    let engineInfo = findEngine(routine);
+    engine.classList.add('badge')
+    engine.classList.add(engineInfo ? 'badge-dark' : 'badge-danger')
+    engine.innerText = `${engineInfo ? engineInfo.name : "Corrupted"}`
+
+
+    li.appendChild(engine)
     return li
 }
 
@@ -245,6 +289,11 @@ function createRoutineFromForm()
 function niceNumber(x) 
 {
     return x.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function findEngine(routine)
+{
+    return engines.find(engine => engine.id == routine.engine)
 }
 
 function cyrb53(str)
