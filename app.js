@@ -43,8 +43,8 @@ app.post('/download', (_,res) =>
 
 app.post('/memory', (_,res) => 
 {
-    res.json(proc.preatyPrice(proc.getMemory()))
+    res.json(proc.getMemory())
 })
 
 proc.start()
-.then(() => app.listen(settings.PORT, () => console.log(`App started on (${settings.PORT})`)))
+.then(() => app.listen(settings.PORT, () => console.log(`[HTTP] started on (${settings.PORT})`)))

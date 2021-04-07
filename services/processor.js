@@ -33,7 +33,7 @@ class Processor
 
     getMemory()
     {
-        return this.notifications;
+        return this.preatyPrice(this.notifications);
     }
 
     memoryLoad()
@@ -50,7 +50,6 @@ class Processor
                 else
                 {
                     this.notifications = []
-                    if(err.code)
                     console.error(`[Processor] Memory can't be loaded. ${err}`)
                 }
                 res()
@@ -155,7 +154,7 @@ class Processor
         return items.map(item => {
             let newItem = {...item}
             newItem.price = numberWithCommas(item.price)
-            return price
+            return newItem
         })
     }
 }
