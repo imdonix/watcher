@@ -22,21 +22,15 @@ class Processor
         })
         .catch(err =>
         {
-            console.log("!! [Processor] cant be started.")
+            console.error(`!! [Processor] cant be started. ${err}`)
         })
     }
 
     reloadRoutines()
     {
         this.routineLoad()
-        .then(() => 
-        {
-            console.log("[Processor] reload done.")
-        })
-        .catch(err =>
-        {
-            console.log("[Processor] reload failed.")
-        })
+        .then(() => console.log("[Processor] reload done."))
+        .catch(err => console.error(`[Processor] reload failed. ${err}`))
     }
 
     getMemory()
@@ -56,8 +50,11 @@ class Processor
                     console.log('[Processor] Memory loaded.')
                 }
                 else
+                {
                     this.notifications = []
-
+                    if(err.code)
+                    console.error(`[Processor] Memory can't be loaded. ${err}`)
+                }
                 res()
             })
         })
@@ -125,10 +122,7 @@ class Processor
                 console.log(`[${this.niceDate()}] [Notify] Message sent! (${toBeNotified.length})`);
                 this.remember(toBeNotified)
             })
-            .catch(error =>
-            {
-                console.log(`[${this.niceDate()}] [Notify] Mail cant be sent: ${error}`);
-            })
+            .catch(error =>console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`))
         }
         else
             console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
