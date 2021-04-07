@@ -13,6 +13,7 @@ const routinesUnsaved = document.querySelector('#unsaved')
 
 const memoryList = document.querySelector('#memory')
 const memoryCount = document.querySelector('#memoryCount')
+const memoryCountMax = 10
 
 let routines, selected, progress
 
@@ -134,10 +135,11 @@ function render()
 
 function renderMemory(items)
 {
-    memoryList.innerHTML = ''
-    memoryCount.innerText = items.length    
 
-    for(const item of items.reverse())
+    memoryList.innerHTML = ''
+    memoryCount.innerText = items.length > memoryCountMax ? `${memoryCountMax}+` : items.length    
+
+    for(const item of items.reverse().splice(0,memoryCountMax))
     {
         let li = document.createElement('li')
         let a = document.createElement('a')
