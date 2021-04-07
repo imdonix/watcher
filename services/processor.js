@@ -20,10 +20,7 @@ class Processor
     
             console.log("[Processor] running.")
         })
-        .catch(err =>
-        {
-            console.error(`!! [Processor] cant be started. ${err}`)
-        })
+        .catch(err =>console.error(`!! [Processor] cant be started. ${err}`))
     }
 
     reloadRoutines()
@@ -122,7 +119,7 @@ class Processor
                 console.log(`[${this.niceDate()}] [Notify] Message sent! (${toBeNotified.length})`);
                 this.remember(toBeNotified)
             })
-            .catch(error =>console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`))
+            .catch(error => console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`))
         }
         else
             console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
@@ -130,8 +127,8 @@ class Processor
 
     createNiceReport(items)
     {
-        this.preatyPrice(items)
-        let html = ejs.render(fs.readFileSync('./views/mail.ejs', 'utf-8'), {items: items});
+        let preaty = this.preatyPrice(items)
+        let html = ejs.render(fs.readFileSync('./views/mail.ejs', 'utf-8'), {items: preaty});
         return html
     }
 
@@ -154,8 +151,11 @@ class Processor
             return x.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, " ");
         }
 
-        for(let item of items)
-            item.price = numberWithCommas(item.price)
+        return items.map(item => {
+            let newItem = {...item}
+            newItem.price = numberWithCommas(item.price)
+            return price
+        })
     }
 }
 
