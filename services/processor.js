@@ -10,8 +10,9 @@ class Processor
 {
     start()
     {   
-        return this.memoryLoad()
-        .then(this.routineLoad())
+        return Promise.resolve()
+        .then(() => this.memoryLoad())
+        .then(() => this.routineLoad())
         .then(() =>
         {
             let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, this.scrap.bind(this))
