@@ -17,7 +17,7 @@ app.post('/upload', (req,res) =>
     let pass = req.body.pass
     if(data)
     {
-        if(pass && pass == cyrb53(settings.MASTER))
+        if((pass && pass == cyrb53(settings.MASTER)) || settings.DEV)
         {
             fs.writeFile('./data/routines.json', JSON.stringify(data), () => 
             {
@@ -43,7 +43,7 @@ app.post('/download', (_,res) =>
 
 app.post('/memory', (_,res) => 
 {
-    res.json(proc.getMemory())
+    res.json(proc.preatyPrice(proc.getMemory()))
 })
 
 proc.start()

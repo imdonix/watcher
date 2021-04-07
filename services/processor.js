@@ -14,7 +14,7 @@ class Processor
         .then(this.routineLoad())
         .then(() =>
         {
-            let scrapper = schedule.scheduleJob(`*/${settings.SCRAP} * * * *`, this.scrap.bind(this))
+            let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, this.scrap.bind(this))
             let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, this.nofity.bind(this))
             this.schedules = [scrapper, notifier]
     
