@@ -60,7 +60,7 @@ function deleteRoutine()
 
 function loadRoutines()
 {
-    return fetch('download', { method: 'POST' })
+    return fetch('download')
     .then(response => response.json())
     .then((data) => 
     {
@@ -80,7 +80,7 @@ function loadRoutines()
 
 function loadMemory()
 {
-    return fetch('memory', { method: 'POST' })
+    return fetch('memory')
     .then(response => response.json())
 }
 
