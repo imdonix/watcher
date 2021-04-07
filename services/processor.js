@@ -4,15 +4,22 @@ const schedule = require('node-schedule');
 const scrap = require('jofogas-scrapper');
 
 const send = require('./mailer')
-const settings = require('../settings')
+const settings = require('../settings');
+const Jofogas = require('../srappers/jofogas');
 
 class Processor
 {
+    scrappers;
+    schedules;
+    notifications;
+    routines;
+
     start()
     {   
         return Promise.resolve()
         .then(() => this.memoryLoad())
         .then(() => this.routineLoad())
+        .then(() => this.scrapperLoad())
         .then(() =>
         {
             let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, this.scrap.bind(this))
@@ -24,6 +31,18 @@ class Processor
         .catch(err =>console.error(`!! [Processor] cant be started. ${err}`))
     }
 
+    getMemory()
+    {
+        return this.preatyPrice(this.notifications);
+    }
+
+    getScrappers()
+    {
+        return this.scrappers.map(scrap => {
+            return {... scrap, options : scrap.getOptions()}
+        })
+    }
+
     reloadRoutines()
     {
         this.routineLoad()
@@ -31,9 +50,13 @@ class Processor
         .catch(err => console.error(`[Processor] reload failed. ${err}`))
     }
 
-    getMemory()
+    scrapperLoad()
     {
-        return this.preatyPrice(this.notifications);
+        let jofogas = new Jofogas()
+        
+        this.scrappers = [jofogas]
+        console.log("[Processor] Scrappers loaded.")
+        return Promise.resolve()
     }
 
     memoryLoad()
