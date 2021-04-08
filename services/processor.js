@@ -1,16 +1,23 @@
 const fs = require('fs')
 const ejs = require('ejs');
 const schedule = require('node-schedule');
-const scrap = require('jofogas-scrapper');
 
 const send = require('./mailer')
-const settings = require('../settings')
+const settings = require('../settings');
+
+const Jofogas = require('../srappers/jofogas');
 
 class Processor
 {
+    scrappers;
+    schedules;
+    notifications;
+    routines;
+
     start()
     {   
         return Promise.resolve()
+        .then(() => this.scrapperLoad())
         .then(() => this.memoryLoad())
         .then(() => this.routineLoad())
         .then(() =>
@@ -19,9 +26,21 @@ class Processor
             let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, this.nofity.bind(this))
             this.schedules = [scrapper, notifier]
     
-            console.log("[Processor] running.")
+            console.log("[Processor] live.")
         })
         .catch(err =>console.error(`!! [Processor] cant be started. ${err}`))
+    }
+
+    getMemory()
+    {
+        return this.preatyPrice(this.notifications);
+    }
+
+    getScrappers()
+    {
+        return this.scrappers.map(scrap => {
+            return {...scrap, options : scrap.getOptions()}
+        })
     }
 
     reloadRoutines()
@@ -31,9 +50,13 @@ class Processor
         .catch(err => console.error(`[Processor] reload failed. ${err}`))
     }
 
-    getMemory()
+    scrapperLoad()
     {
-        return this.preatyPrice(this.notifications);
+        let jofogas = new Jofogas()
+
+        this.scrappers = [jofogas]
+        console.log(`[Processor] Scrappers loaded. (${this.scrappers.length})`)
+        return Promise.resolve()
     }
 
     memoryLoad()
@@ -45,7 +68,7 @@ class Processor
                 if(!err)
                 {
                     this.notifications = JSON.parse(data)
-                    console.log('[Processor] Memory loaded.')
+                    console.log(`[Processor] Memory loaded. (${this.notifications.length})`)
                 }
                 else
                 {
@@ -66,7 +89,7 @@ class Processor
                 if(!err)
                 {
                     this.routines = JSON.parse(data)
-                    console.log('[Processor] Routines loaded.')
+                    console.log(`[Processor] Routines loaded. (${this.routines.length})`)
                     res()
                 }
                 else
@@ -83,26 +106,24 @@ class Processor
     {
         for(let routine of this.routines)
         {
-            let settings = {
-                depht: 10,
-                domain: routine.domain,
-                minPrice : routine.min,
-                maxPrice : routine.max,
-                sleep : Math.floor(Math.random() * Math.floor(2000)) + 100,
-                enableCompany : false,
-                enablePost: false
-            }
+            let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
 
-            scrap(routine.keyword, settings, items =>
+            if(engine)
             {
-                for(let item of items)
+                engine.scrap(routine)
+                .then(items => 
+                {
+                    for(let item of items)
                     if(!this.notifications.find(pre => pre.id == item.id))
                     {
                         item.found = this.niceDate()
                         this.notifications.push(item)
                     }
-                console.log(`[${this.niceDate()}] [Srapper] {${routine.keyword}} found: ${items.length}, items in memory: ${this.notifications.length}`)
-            })
+                    console.log(`[${this.niceDate()}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
+                })
+            }
+            else
+                console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
         }
     }
 
