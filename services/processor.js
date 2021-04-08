@@ -1,10 +1,10 @@
 const fs = require('fs')
 const ejs = require('ejs');
 const schedule = require('node-schedule');
-const scrap = require('jofogas-scrapper');
 
 const send = require('./mailer')
 const settings = require('../settings');
+
 const Jofogas = require('../srappers/jofogas');
 
 class Processor
@@ -17,16 +17,16 @@ class Processor
     start()
     {   
         return Promise.resolve()
+        .then(() => this.scrapperLoad())
         .then(() => this.memoryLoad())
         .then(() => this.routineLoad())
-        .then(() => this.scrapperLoad())
         .then(() =>
         {
             let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, this.scrap.bind(this))
             let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, this.nofity.bind(this))
             this.schedules = [scrapper, notifier]
     
-            console.log("[Processor] running.")
+            console.log("[Processor] live.")
         })
         .catch(err =>console.error(`!! [Processor] cant be started. ${err}`))
     }
@@ -39,7 +39,7 @@ class Processor
     getScrappers()
     {
         return this.scrappers.map(scrap => {
-            return {... scrap, options : scrap.getOptions()}
+            return {...scrap, options : scrap.getOptions()}
         })
     }
 
@@ -53,9 +53,9 @@ class Processor
     scrapperLoad()
     {
         let jofogas = new Jofogas()
-        
+
         this.scrappers = [jofogas]
-        console.log("[Processor] Scrappers loaded.")
+        console.log(`[Processor] Scrappers loaded. (${this.scrappers.length})`)
         return Promise.resolve()
     }
 
@@ -68,7 +68,7 @@ class Processor
                 if(!err)
                 {
                     this.notifications = JSON.parse(data)
-                    console.log('[Processor] Memory loaded.')
+                    console.log(`[Processor] Memory loaded. (${this.notifications.length})`)
                 }
                 else
                 {
@@ -89,7 +89,7 @@ class Processor
                 if(!err)
                 {
                     this.routines = JSON.parse(data)
-                    console.log('[Processor] Routines loaded.')
+                    console.log(`[Processor] Routines loaded. (${this.routines.length})`)
                     res()
                 }
                 else

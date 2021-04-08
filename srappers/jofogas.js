@@ -41,12 +41,12 @@ class Jofogas extends Scraper
             {
                 id : "keywords",
                 name : "Keywords",
-                type : "string" 
+                type : "text" 
             },
             {
                 id : "domain",
                 name : "Platform URL",
-                type : "string" 
+                type : "url" 
             },
             {
                 id : "minPrice",
@@ -55,18 +55,18 @@ class Jofogas extends Scraper
             },
             {
                 id : "maxPrice",
-                name : "Min price",
+                name : "Max price",
                 type : "number" 
             },
             {
                 id : "enableCompany",
-                name : "Céges",
-                type : "boolean" 
+                name : "Enable company ad",
+                type : "checkbox" 
             },
             {
                 id : "enablePost",
-                name : "Postai szálítás",
-                type : "boolean" 
+                name : "Enable post service",
+                type : "checkbox" 
             }
         ]
     }
