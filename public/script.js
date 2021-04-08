@@ -206,6 +206,7 @@ function renderSelectEngine()
     const label = document.createElement('label')
     const br = document.createElement('br')
     const select = document.createElement('select')
+    const hr = document.createElement('hr')
     label.for = "engine";
     label.innerText = "Search Engine:"
     select.name = "engine"
@@ -223,6 +224,7 @@ function renderSelectEngine()
     div.appendChild(label)
     div.appendChild(br)
     div.appendChild(select)
+    div.appendChild(hr)
 
     return div
 }
@@ -302,7 +304,7 @@ function generateRoutineDOM(routine, place)
 
     let engineInfo = findEngine(routine.engine);
     engine.classList.add('badge')
-    engine.classList.add(engineInfo ? 'badge-dark' : 'badge-danger')
+    engine.classList.add(engineInfo ? 'badge-light' : 'badge-danger')
     engine.innerText = `${engineInfo ? engineInfo.name : "Corrupted"}`
 
 
@@ -324,7 +326,9 @@ function fillForm()
 {
     if(selected < 0)
     {
-        form.querySelectorAll('input').forEach(input => input.value = '')
+        console.log(currentEngine.options)   
+        const def = (input) => { return currentEngine.options.find(opt => opt.id == input.id)?.default}
+        form.querySelectorAll('input').forEach(input => input.value = (def(input) ? def(input) : ''))
     }
     else
     {
