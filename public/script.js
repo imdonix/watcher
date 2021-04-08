@@ -326,7 +326,6 @@ function fillForm()
 {
     if(selected < 0)
     {
-        console.log(currentEngine.options)   
         const def = (input) => { return currentEngine.options.find(opt => opt.id == input.id)?.default}
         form.querySelectorAll('input').forEach(input => input.value = (def(input) ? def(input) : ''))
     }
