@@ -46,7 +46,8 @@ class Jofogas extends Scraper
             {
                 id : "domain",
                 name : "Platform URL",
-                type : "url" 
+                type : "url",
+                default : `http://${name}/budapest`
             },
             {
                 id : "minPrice",
