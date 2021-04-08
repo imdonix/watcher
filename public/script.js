@@ -1,7 +1,5 @@
-const keywords = document.querySelector('#keywords')
-const domain = document.querySelector('#domain')
-const min = document.querySelector('#min')
-const max = document.querySelector('#max')
+const engineDisplay = document.querySelector('#engineDisplay')
+const form = document.querySelector('#form')
 
 const add = document.querySelector('#add')
 const remove = document.querySelector('#remove')
@@ -13,8 +11,9 @@ const routinesUnsaved = document.querySelector('#unsaved')
 
 const memoryList = document.querySelector('#memory')
 const memoryCount = document.querySelector('#memoryCount')
+const memoryCountMax = 10
 
-let routines, selected, progress
+let routines, selected, progress, engines, currentEngine
 
 add.addEventListener('click', modify)
 remove.addEventListener('click', deleteRoutine)
@@ -24,8 +23,9 @@ init()
 
 function init()
 {
-    loadRoutines()
-    loadMemory()
+    loadEngines()
+    .then(() => loadRoutines())
+    .then(() => loadMemory())
     .then(data => renderMemory(data))
     .catch(error => {console.log(error)})
 }
@@ -54,13 +54,33 @@ function deleteRoutine()
 
     selected = -1
 
-
     render()
+}
+
+function selectEngine(id)
+{
+    currentEngine = findEngine(id)
+    render()
+}
+
+function loadEngines()
+{
+    return fetch('scrappers')
+    .then(response => response.json())
+    .then((data) => 
+    {
+        if(!data || data < 1) return Promise.reject("No engine found")
+        
+        engines = data
+        renderEngines()
+        currentEngine = engines[0]
+        return Promise.resolve()
+    })
 }
 
 function loadRoutines()
 {
-    return fetch('download', { method: 'POST' })
+    return fetch('download')
     .then(response => response.json())
     .then((data) => 
     {
@@ -68,19 +88,20 @@ function loadRoutines()
         routines = data
         selected = -1
         render()
+        return Promise.resolve()
     })
     .catch(err => 
     {
-        alert('Routines cant be donwloaded. - ' + err)
         routines = []
         selected = -1
         render()
+        return Promise.reject(err)
     })
 }
 
 function loadMemory()
 {
-    return fetch('memory', { method: 'POST' })
+    return fetch('memory')
     .then(response => response.json())
 }
 
@@ -129,15 +150,17 @@ function render()
     let iterator = 0
     for (const routine of routines) routinesList.appendChild(generateRoutineDOM(routine, iterator++))
     
+    renderForm()
     fillForm()
 }
 
 function renderMemory(items)
 {
-    memoryList.innerHTML = ''
-    memoryCount.innerText = items.length    
 
-    for(const item of items.reverse())
+    memoryList.innerHTML = ''
+    memoryCount.innerText = items.length > memoryCountMax ? `${memoryCountMax}+` : items.length    
+
+    for(const item of items.reverse().splice(0,memoryCountMax))
     {
         let li = document.createElement('li')
         let a = document.createElement('a')
@@ -151,6 +174,75 @@ function renderMemory(items)
         a.appendChild(li)
         memoryList.appendChild(a)
     }
+}
+
+function renderEngines()
+{
+    for(const engine of engines)
+    {
+        let span = document.createElement('span')
+        span.classList.add('badge')
+        span.classList.add('badge-light')
+        span.innerText = ` ${engine.name} `
+        engineDisplay.appendChild(span)
+        engineDisplay.innerHTML += "&nbsp"
+    }
+}
+
+function renderForm()
+{
+    form.innerHTML = ''
+    if(currentEngine)
+    {
+        form.appendChild(renderSelectEngine())
+        for(const option of currentEngine.options)
+            form.appendChild(renderInputField(option.id, option.name, option.type))
+    }
+}
+
+function renderSelectEngine()
+{
+    const div = document.createElement('div')
+    const label = document.createElement('label')
+    const br = document.createElement('br')
+    const select = document.createElement('select')
+    label.for = "engine";
+    label.innerText = "Search Engine:"
+    select.name = "engine"
+    select.classList.add('custom-select')
+    for(const engine of engines)
+    {
+        const option = document.createElement('option')
+        option.value = engine.id
+        option.innerText = engine.name
+        select.appendChild(option)
+    }
+    select.value = currentEngine.id
+    select.addEventListener('change', (event) => selectEngine(event.target.value))
+    
+    div.appendChild(label)
+    div.appendChild(br)
+    div.appendChild(select)
+
+    return div
+}
+
+function renderInputField(id, name, type)
+{
+    const div = document.createElement('div')
+    const label = document.createElement('label')
+    const br = document.createElement('br')
+    const input = document.createElement('input')
+    label.for = id;
+    label.innerText = name
+    input.type = type;
+    input.classList.add('form-control')
+    input.name = id;
+    input.id = id;
+    div.appendChild(label)
+    div.appendChild(br)
+    div.appendChild(input)
+    return div;
 }
 
 function createValueBadge(item)
@@ -183,7 +275,8 @@ function createFoundbadge(item)
 function generateRoutineDOM(routine, place)
 {
     let li = document.createElement('li')
-    let span = document.createElement('span')
+    
+    let engine = document.createElement('span')
     li.classList.add('list-group-item')
     li.classList.add('d-flex')
     li.classList.add('justify-content-between')
@@ -194,11 +287,26 @@ function generateRoutineDOM(routine, place)
         const pointer = place
         handle(pointer)
     })
-    li.innerText = routine.keyword
-    span.classList.add('badge')
-    span.classList.add('badge-info')
-    span.innerText = `${niceNumber(routine.min)} - ${niceNumber(routine.max)} Ft`
-    li.appendChild(span)
+
+    li.innerText = routine.keywords && routine.keywords != ""  ? routine.keywords : "*"
+
+    if(routine.minPrice && routine.maxPrice)
+    {
+        let span = document.createElement('span')
+        span.classList.add('badge')
+        span.classList.add('badge-info')
+        span.innerText = `${niceNumber(routine.minPrice)} - ${niceNumber(routine.maxPrice)} Ft`
+        li.appendChild(span)
+    }
+
+
+    let engineInfo = findEngine(routine.engine);
+    engine.classList.add('badge')
+    engine.classList.add(engineInfo ? 'badge-dark' : 'badge-danger')
+    engine.innerText = `${engineInfo ? engineInfo.name : "Corrupted"}`
+
+
+    li.appendChild(engine)
     return li
 }
 
@@ -216,33 +324,36 @@ function fillForm()
 {
     if(selected < 0)
     {
-        keywords.value = ''
-        domain.value = 'https://www.jofogas.hu/budapest'
-        min.value = ''
-        max.value = ''
+        form.querySelectorAll('input').forEach(input => input.value = '')
     }
     else
     {
-        keywords.value = routines[selected].keyword
-        domain.value = routines[selected].domain
-        min.value = routines[selected].min
-        max.value = routines[selected].max
+        form.querySelectorAll('input').forEach(input => 
+        {
+            if(input.type === 'checkbox')
+                input.checked = routines[selected][input.id]
+            else
+                input.value = routines[selected][input.id]
+        })
     }
 }
 
 function createRoutineFromForm()
 {
-    return {
-        keyword : keywords.value,
-        domain : domain.value,
-        min : min.value,
-        max : max.value
-    }
+    let routine = {engine : currentEngine.id}
+    form.querySelectorAll('input').forEach(input => routine[input.id] = input.type === 'checkbox' ? input.checked : input.value)
+    console.log(routine)
+    return routine
 }
 
 function niceNumber(x) 
 {
     return x.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, " ");
+}
+
+function findEngine(id)
+{
+    return engines.find(engine => engine.id == id)
 }
 
 function cyrb53(str)

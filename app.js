@@ -32,7 +32,7 @@ app.post('/upload', (req,res) =>
         res.status(500).send()
 })
 
-app.post('/download', (_,res) => 
+app.get('/download', (_,res) => 
 {
     fs.readFile('./data/routines.json', (err, data) =>
     {
@@ -41,9 +41,14 @@ app.post('/download', (_,res) =>
     })
 })
 
-app.post('/memory', (_,res) => 
+app.get('/memory', (_,res) => 
 {
     res.json(proc.getMemory())
+})
+
+app.get('/scrappers', (_,res) => 
+{
+    res.json(proc.getScrappers())
 })
 
 proc.start()
