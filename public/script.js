@@ -195,8 +195,8 @@ function renderForm()
     if(currentEngine)
     {
         form.appendChild(renderSelectEngine())
-        for (let index = 0; index < 5; index++) 
-        form.appendChild(renderInputField("seggfej", "Seggfej szépen", "text"))
+        for(const option of currentEngine.options)
+            form.appendChild(renderInputField(option.id, option.name, option.type))
     }
 }
 
@@ -210,8 +210,6 @@ function renderSelectEngine()
     label.innerText = "Search Engine:"
     select.name = "engine"
     select.classList.add('custom-select')
-    select.value = currentEngine ? currentEngine.id : engines[0].id
-    for (let index = 0; index < 2; index++) 
     for(const engine of engines)
     {
         const option = document.createElement('option')
@@ -219,6 +217,7 @@ function renderSelectEngine()
         option.innerText = engine.name
         select.appendChild(option)
     }
+    select.value = currentEngine.id
     select.addEventListener('change', (event) => selectEngine(event.target.value))
     
     div.appendChild(label)
@@ -289,7 +288,7 @@ function generateRoutineDOM(routine, place)
         handle(pointer)
     })
 
-    li.innerText = routine.keywords && routine.keywords != ""  ? routine.keywords : "/All/"
+    li.innerText = routine.keywords && routine.keywords != ""  ? routine.keywords : "*"
 
     if(routine.minPrice && routine.maxPrice)
     {
@@ -323,34 +322,28 @@ function generateNew()
 
 function fillForm()
 {
-    return //TODO 
-
     if(selected < 0)
     {
-        keywords.value = ''
-        domain.value = 'https://www.jofogas.hu/budapest'
-        min.value = ''
-        max.value = ''
+        form.querySelectorAll('input').forEach(input => input.value = '')
     }
     else
     {
-        keywords.value = routines[selected].keyword
-        domain.value = routines[selected].domain
-        min.value = routines[selected].min
-        max.value = routines[selected].max
+        form.querySelectorAll('input').forEach(input => 
+        {
+            if(input.type === 'checkbox')
+                input.checked = routines[selected][input.id]
+            else
+                input.value = routines[selected][input.id]
+        })
     }
 }
 
 function createRoutineFromForm()
 {
-    return //TODO
-
-    return {
-        keyword : keywords.value,
-        domain : domain.value,
-        min : min.value,
-        max : max.value
-    }
+    let routine = {engine : currentEngine.id}
+    form.querySelectorAll('input').forEach(input => routine[input.id] = input.type === 'checkbox' ? input.checked : input.value)
+    console.log(routine)
+    return routine
 }
 
 function niceNumber(x) 
