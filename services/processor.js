@@ -6,6 +6,7 @@ const send = require('./mailer')
 const settings = require('../settings');
 
 const Jofogas = require('../srappers/jofogas');
+const Ingatlan = require('../srappers/ingatlan');
 
 class Processor
 {
@@ -52,9 +53,10 @@ class Processor
 
     scrapperLoad()
     {
-        let jofogas = new Jofogas()
+        const jofogas = new Jofogas()
+        const ingatlan = new Ingatlan()
 
-        this.scrappers = [jofogas]
+        this.scrappers = [jofogas, ingatlan]
         console.log(`[Processor] Scrappers loaded. (${this.scrappers.length})`)
         return Promise.resolve()
     }
