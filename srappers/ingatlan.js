@@ -28,6 +28,7 @@ class Ingatlan extends Scraper
                 items.forEach(item => {
                     item.id = cyrb53(`${item.url}-${name}`)
                     item.name = item.where
+
                 })
                 res(items)
             })
@@ -37,6 +38,11 @@ class Ingatlan extends Scraper
     getOptions()
     {
         return [
+            {
+                id : "keywords",
+                name : "Tag (only for the user)",
+                type : "text" 
+            },
             {
                 id : "search",
                 name : "Search params form ingatlan.com",
@@ -60,7 +66,6 @@ class Ingatlan extends Scraper
     {
         return Math.floor(Math.random() * Math.floor(maxTimeOut * 1000)) + 1000;
     }
-
 
 }
 
