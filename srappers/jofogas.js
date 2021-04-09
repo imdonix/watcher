@@ -1,4 +1,4 @@
-const scrap = require('jofogas-scrapper')
+const scrap = require('jofogas-scraper')
 const { cyrb53 } = require('../services/crypto')
 const Scraper = require("../services/scraper")
 
