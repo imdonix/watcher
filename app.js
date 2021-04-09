@@ -51,5 +51,12 @@ app.get('/scrappers', (_,res) =>
     res.json(proc.getScrappers())
 })
 
+app.post('/notify', (_,res) => 
+{
+    proc.nofity()
+    .then((sent) => res.status(200).send({sent}))
+    .catch((err) => res.status(500).send(err))
+})
+
 proc.start()
 .then(() => app.listen(settings.PORT, () => console.log(`[HTTP] started on (${settings.PORT})`)))

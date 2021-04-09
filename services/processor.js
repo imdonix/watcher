@@ -24,7 +24,7 @@ class Processor
         .then(() =>
         {
             let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, this.scrap.bind(this))
-            let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, this.nofity.bind(this))
+            let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, () => this.nofity.bind(this).then())
             this.schedules = [scrapper, notifier]
     
             console.log("[Processor] live.")
@@ -131,21 +131,32 @@ class Processor
 
     nofity()
     {
-        let dateText = `Report! (${this.niceDate()})`
-        let toBeNotified = this.notifications.filter(n => !n.sent)
-            
-        if(toBeNotified.length > 0)
+        return new Promise((res,rej) => 
         {
-            send(dateText, `${toBeNotified.length} deal aviable`, this.createNiceReport(toBeNotified))
-            .then(() => 
+            let dateText = `Report! (${this.niceDate()})`
+            let toBeNotified = this.notifications.filter(n => !n.sent)
+                
+            if(toBeNotified.length > 0)
             {
-                console.log(`[${this.niceDate()}] [Notify] Message sent! (${toBeNotified.length})`);
-                this.remember(toBeNotified)
-            })
-            .catch(error => console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`))
-        }
-        else
-            console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
+                send(dateText, `${toBeNotified.length} deal aviable`, this.createNiceReport(toBeNotified))
+                .then(() => 
+                {
+                    console.log(`[${this.niceDate()}] [Notify] Message sent! (${toBeNotified.length})`);
+                    this.remember(toBeNotified)
+                    res(toBeNotified.length)
+                })
+                .catch(error => 
+                {
+                    console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`)
+                    rej(error)
+                })
+            }
+            else
+            {
+                console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
+                res(0)
+            }        
+        })
     }
 
     createNiceReport(items)
