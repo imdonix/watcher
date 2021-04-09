@@ -4,6 +4,7 @@ const form = document.querySelector('#form')
 const add = document.querySelector('#add')
 const remove = document.querySelector('#remove')
 const upload = document.querySelector('#upload')
+const notify = document.querySelector('#notify')
 
 const routinesList = document.querySelector('#routines')
 const routinesCount = document.querySelector('#routinesCount')
@@ -18,6 +19,7 @@ let routines, selected, progress, engines, currentEngine
 add.addEventListener('click', modify)
 remove.addEventListener('click', deleteRoutine)
 upload.addEventListener('click', uploadRoutine)
+notify.addEventListener('click', notifyMemory)
 
 init()
 
@@ -103,6 +105,34 @@ function loadMemory()
 {
     return fetch('memory')
     .then(response => response.json())
+}
+
+function notifyMemory()
+{
+    notify.style.visibility = 'hidden';
+    return fetch('notify', { method : 'POST' })
+    .then(response => {
+        if(response.status === 200)
+        {
+            response.json()
+            .then((body) => 
+            {
+                if(body.sent > 0)
+                {
+                    loadMemory()
+                    .then(memory => renderMemory(memory))
+                }
+                else
+                    alert("No new deals available to send out!")
+            })
+        }
+        else
+        {
+            alert("Something went wrong on the server!")
+            notify.style.visibility = 'visible'
+        }
+          
+    })
 }
 
 function handle(index)
@@ -263,6 +293,8 @@ function createSentBadge(item)
     span.classList.add('badge')
     span.classList.add( item.sent ? 'badge-success' : 'badge-primary')
     span.innerText  = item.sent ? 'Sent' : 'In queue'
+    if(!item.sent) notify.style.visibility = 'visible';
+
     return span
 }
 
