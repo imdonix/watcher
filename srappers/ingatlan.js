@@ -3,7 +3,7 @@ const { cyrb53 } = require('../services/crypto')
 const Scraper = require("../services/scraper")
 
 const name = "ingatlan.com"
-const depth = 5;
+const depth = 3;
 const maxTimeOut = 2;
 
 class Ingatlan extends Scraper
@@ -19,7 +19,7 @@ class Ingatlan extends Scraper
         return new Promise((res, _) => 
         {
             let options = {
-                depht: 7,                     
+                depth: depth,                     
                 timeout: this.timeOut(),
                 search: routine.search
             }
