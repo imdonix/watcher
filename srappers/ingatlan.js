@@ -54,7 +54,8 @@ class Ingatlan extends Scraper
     getItemModel()
     {
         return [
-            "id", 
+            "id",
+            "image",
             "url",
             "where",
             "price",
