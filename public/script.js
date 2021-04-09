@@ -108,6 +108,7 @@ function loadMemory()
 function handle(index)
 {
     selected = index
+    if(selected >= 0) currentEngine = findEngine(routines[selected].engine)
     render()
 }
 
