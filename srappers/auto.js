@@ -37,6 +37,11 @@ class Auto extends Scraper
     {
         return [
             {
+                id : "keywords",
+                name : "Tag (only for the user)",
+                type : "text" 
+            },
+            {
                 id : "key",
                 name : "Key",
                 type : "text" 
