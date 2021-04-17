@@ -7,6 +7,7 @@ const settings = require('../settings');
 
 const Jofogas = require('../srappers/jofogas');
 const Ingatlan = require('../srappers/ingatlan');
+const Auto = require('../srappers/auto');
 
 class Processor
 {
@@ -55,8 +56,9 @@ class Processor
     {
         const jofogas = new Jofogas()
         const ingatlan = new Ingatlan()
+        const auto = new Auto()
 
-        this.scrappers = [jofogas, ingatlan]
+        this.scrappers = [jofogas, ingatlan, auto]
         console.log(`[Processor] Scrappers loaded. (${this.scrappers.length})`)
         return Promise.resolve()
     }
