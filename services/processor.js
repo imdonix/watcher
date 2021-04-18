@@ -104,33 +104,29 @@ class Processor
         })
     }
 
-    scrap()
+    async scrap()
     {
-        let todo = this.routines.map((routine) => new Promise(res => 
+        for(const routine of this.routines)
         {
             let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
+            let index = this.routines.indexOf(routine)
 
             if(engine)
             {
-                engine.scrap(routine)
-                .then(items => 
+                let items = await engine.scrap(routine)
+                for(let item of items)
+                if(!this.notifications.find(pre => pre.id == item.id))
                 {
-                    for(let item of items)
-                    if(!this.notifications.find(pre => pre.id == item.id))
-                    {
-                        item.found = this.niceDate()
-                        this.notifications.push(item)
-                    }
-                    console.log(`[${this.niceDate()}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
-                    res()
-                })
+                    item.found = this.niceDate()
+                    this.notifications.push(item)
+                }
+                console.log(`[${this.niceDate()}] [${index}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
             }
             else
                 console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
-        }))
-
-        return new Promise(res => todo.reduce((p, f) => f.then(p), Promise.resolve()).then(() => res())) 
+        }
     }
+
 
     nofity()
     {
