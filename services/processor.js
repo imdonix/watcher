@@ -106,32 +106,30 @@ class Processor
 
     scrap()
     {
-        return new Promise((res) => 
+        let todo = this.routines.map((routine) => new Promise(res => 
         {
-            for(let routine of this.routines)
+            let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
+
+            if(engine)
             {
-                let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
-
-                if(engine)
+                engine.scrap(routine)
+                .then(items => 
                 {
-                    engine.scrap(routine)
-                    .then(items => 
+                    for(let item of items)
+                    if(!this.notifications.find(pre => pre.id == item.id))
                     {
-                        for(let item of items)
-                        if(!this.notifications.find(pre => pre.id == item.id))
-                        {
-                            item.found = this.niceDate()
-                            this.notifications.push(item)
-                        }
-                        console.log(`[${this.niceDate()}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
-                    })
-                }
-                else
-                    console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
+                        item.found = this.niceDate()
+                        this.notifications.push(item)
+                    }
+                    console.log(`[${this.niceDate()}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
+                    res()
+                })
             }
+            else
+                console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
+        }))
 
-            res()
-        })
+        return new Promise(res => todo.reduce((p, f) => f.then(p), Promise.resolve()).then(() => res())) 
     }
 
     nofity()
