@@ -58,5 +58,11 @@ app.post('/notify', (_,res) =>
     .catch((err) => res.status(500).send(err))
 })
 
+app.post('/scrap', (_,res) => 
+{
+    proc.scrap()
+    .then(() => res.status(200).send())
+})
+
 proc.start()
 .then(() => app.listen(settings.PORT, () => console.log(`[HTTP] started on (${settings.PORT})`)))
