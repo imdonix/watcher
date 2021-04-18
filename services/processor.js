@@ -23,8 +23,8 @@ class Processor
         .then(() => this.routineLoad())
         .then(() =>
         {
-            let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, this.scrap.bind(this))
-            let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, () => this.nofity.bind(this).then())
+            let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, () => this.scrap().then())
+            let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, () => this.nofity().then().catch())
             this.schedules = [scrapper, notifier]
     
             console.log("[Processor] live.")
@@ -106,27 +106,32 @@ class Processor
 
     scrap()
     {
-        for(let routine of this.routines)
+        return new Promise((res) => 
         {
-            let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
-
-            if(engine)
+            for(let routine of this.routines)
             {
-                engine.scrap(routine)
-                .then(items => 
+                let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
+
+                if(engine)
                 {
-                    for(let item of items)
-                    if(!this.notifications.find(pre => pre.id == item.id))
+                    engine.scrap(routine)
+                    .then(items => 
                     {
-                        item.found = this.niceDate()
-                        this.notifications.push(item)
-                    }
-                    console.log(`[${this.niceDate()}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
-                })
+                        for(let item of items)
+                        if(!this.notifications.find(pre => pre.id == item.id))
+                        {
+                            item.found = this.niceDate()
+                            this.notifications.push(item)
+                        }
+                        console.log(`[${this.niceDate()}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
+                    })
+                }
+                else
+                    console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
             }
-            else
-                console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
-        }
+
+            res()
+        })
     }
 
     nofity()
