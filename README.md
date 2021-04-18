@@ -1,6 +1,17 @@
-# Jófogás.hu watcher
+# Watcher
 
-This app makes you to easily find "good deals" on Jófogás.hu.
+This app helps you to find "good deals" on the web. 
+
+Currently supported sites:
+
+- jofogas.hu
+- ingatlan.com
+- hasznaltauto.hu
+
+## How it works
+
+The app scrape the sites and check if a new `deal` is available by the user requirements.
+After collecting the `deal`s the user get notified by email.
 
 ## Installation
 
@@ -9,10 +20,10 @@ This app makes you to easily find "good deals" on Jófogás.hu.
 ```bash
 git clone https://github.com/imdonix/jofogas-watcher.git
 cd jofogas-watcher
-npm update
+npm i
 ```
 
-2. Create a new or use a existing Gmail account for nodemailer - [Help](https://nodemailer.com/usage/using-gmail/)  
+2. [Optional] Create a new or use a existing Gmail account for nodemailer - [Help](https://nodemailer.com/usage/using-gmail/)  
 
 3. Edit the `settings.js` file:
 
@@ -36,6 +47,6 @@ npm update
 npm start
 ```
 
-## Usage
+## Preview
 
 ![In use](https://raw.githubusercontent.com/imdonix/jofogas-watcher/main/doc/preview.png)

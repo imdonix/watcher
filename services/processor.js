@@ -7,6 +7,7 @@ const settings = require('../settings');
 
 const Jofogas = require('../srappers/jofogas');
 const Ingatlan = require('../srappers/ingatlan');
+const Auto = require('../srappers/auto');
 
 class Processor
 {
@@ -23,8 +24,10 @@ class Processor
         .then(() => this.routineLoad())
         .then(() =>
         {
+
             let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, () => this.scrap().then())
             let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, () => this.nofity().then().catch())
+
             this.schedules = [scrapper, notifier]
     
             console.log("[Processor] live.")
@@ -55,8 +58,9 @@ class Processor
     {
         const jofogas = new Jofogas()
         const ingatlan = new Ingatlan()
+        const auto = new Auto()
 
-        this.scrappers = [jofogas, ingatlan]
+        this.scrappers = [jofogas, ingatlan, auto]
         console.log(`[Processor] Scrappers loaded. (${this.scrappers.length})`)
         return Promise.resolve()
     }
@@ -128,6 +132,19 @@ class Processor
     }
 
 
+    nofityNow()
+    {
+        this.nofity()
+        .then(count => 
+        {
+            if(count > 0)
+                console.log(`[${this.niceDate()}] [Notify] Message sent! (${count})`)
+            else
+                console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
+        })
+        .catch(error => console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`))
+    }
+
     nofity()
     {
         return new Promise((res,rej) => 
@@ -140,21 +157,14 @@ class Processor
                 send(dateText, `${toBeNotified.length} deal aviable`, this.createNiceReport(toBeNotified))
                 .then(() => 
                 {
-                    console.log(`[${this.niceDate()}] [Notify] Message sent! (${toBeNotified.length})`);
                     this.remember(toBeNotified)
                     res(toBeNotified.length)
                 })
-                .catch(error => 
-                {
-                    console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`)
-                    rej(error)
-                })
+                .catch(error => rej(error))
             }
             else
-            {
-                console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
                 res(0)
-            }        
+                  
         })
     }
 
