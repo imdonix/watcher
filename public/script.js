@@ -5,6 +5,7 @@ const add = document.querySelector('#add')
 const remove = document.querySelector('#remove')
 const upload = document.querySelector('#upload')
 const notify = document.querySelector('#notify')
+const scrap = document.querySelector('#scrap')
 
 const routinesList = document.querySelector('#routines')
 const routinesCount = document.querySelector('#routinesCount')
@@ -20,6 +21,7 @@ add.addEventListener('click', modify)
 remove.addEventListener('click', deleteRoutine)
 upload.addEventListener('click', uploadRoutine)
 notify.addEventListener('click', notifyMemory)
+scrap.addEventListener('click', manualScrap)
 
 init()
 
@@ -133,6 +135,21 @@ function notifyMemory()
         }
           
     })
+}
+
+function manualScrap()
+{
+    scrap.style.visibility = 'hidden';
+    
+    fetch('scrap', { method : 'POST' })
+    .then(response => 
+    {
+        scrap.style.visibility = 'visible';
+        return response.status === 200 ? Promise.resolve() : Promise.reject()
+    })
+    .then(loadMemory)
+    .then(memory => renderMemory(memory))
+    .catch(() => console.log('Somethig went wrong with scraping'))
 }
 
 function handle(index)
