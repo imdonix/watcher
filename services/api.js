@@ -1,5 +1,7 @@
 const { Router } = require('express');
 const { cyrb53 } = require('./crypto')
+const { auth } = require('./auth')
+const fs = require('fs')
 
 module.exports = class API extends Router
 {
@@ -8,22 +10,16 @@ module.exports = class API extends Router
         super()
         this.proc = proc
 
-        this.post('/upload', (req,res) =>
+        this.post('/upload', auth, (req,res) =>
         {
             let data = req.body.data;
-            let pass = req.body.pass
             if(data)
             {
-                if((pass && pass == cyrb53(settings.MASTER)) || settings.DEV)
+                fs.writeFile('./data/routines.json', JSON.stringify(data), () => 
                 {
-                    fs.writeFile('./data/routines.json', JSON.stringify(data), () => 
-                    {
-                        proc.reloadRoutines()
-                        res.status(200).send()
-                    })
-                }
-                else
-                    res.status(401).send()
+                    proc.reloadRoutines()
+                    res.status(200).send()
+                })
             }
             else
                 res.status(500).send()
@@ -32,7 +28,7 @@ module.exports = class API extends Router
         this.get('/download', (_,res) => 
         {
             fs.readFile('./data/routines.json', (err, data) =>
-            {
+            {                                                                           
                 if(err) res.status(500).send()
                 else res.send(data)
             })
