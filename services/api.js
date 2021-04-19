@@ -17,7 +17,7 @@ module.exports = class API extends Router
             {
                 fs.writeFile('./data/routines.json', JSON.stringify(data), () => 
                 {
-                    proc.reloadRoutines()
+                    this.proc.reloadRoutines()
                     res.status(200).send()
                 })
             }
