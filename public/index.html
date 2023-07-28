@@ -28,8 +28,6 @@
                 <button id="add" class="btn btn-primary" >Add / Modify</button>
                 <button id="remove" class="btn btn-danger">Remove</button>
                 <button id="upload" class="btn btn-success">Upload to live</button>
-                <hr>
-                <button id="notify" style="visibility: hidden;" class="btn btn-info">Notify now</button>
             </div>
             <div class="col-sm">
                 <hr>
@@ -43,8 +41,12 @@
                 <h3>
                     Items in notify 
                     <span class="badge badge-primary" id="memoryCount">?</span>
+                    <br>
                     <button id="scrap" type="button" class="btn btn-default btn-sm">
                         <i class="fa fa-refresh" aria-hidden="true"></i> Refresh
+                    </button>
+                    <button id="notify" type="button" class="btn btn-default btn-sm">
+                        <i class="fa fa-envelope-o" aria-hidden="true"></i> Mail
                     </button>
                 </h3>
                 <ul class="list-group" id="memory">

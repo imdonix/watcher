@@ -126,6 +126,8 @@ function notifyMemory()
                 }
                 else
                     alert("No new deals available to send out!")
+                
+                notify.style.visibility = 'visible'
             })
         }
         else
