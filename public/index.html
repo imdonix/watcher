@@ -16,28 +16,7 @@
 </head>
 <body>  
     <div class="container">
-        <div id="editor" class="row disabled">
-            <div class="col-sm">
-                <hr>
-                <h3>Routine editor</h3>
-                <form id="form">
-                </form>
-
-                <hr>
-                <button id="add" class="btn btn-primary" >Add / Modify</button>
-                <button id="remove" class="btn btn-danger">Remove</button>
-                <button id="upload" class="btn btn-success">Upload to live</button>
-            </div>
-            <div class="col-sm">
-                <hr>
-                <h3>Active routines <span class="badge badge-primary" id="routinesCount">?</span> <span class="badge badge-danger hidden" id="unsaved">unsaved</span></h3>
-                <ul class="list-group" id="routines">
-                    <li class="list-group-item">Create New </li>
-                </ul>
-            </div>
-        </div>
-        <hr>    
-        <div class="row">
+        <div class="row ">
             <div class="col-sm">
                 <sub id="engineDisplay"></sub>
                 <h1>Watcher</h1>
@@ -57,6 +36,26 @@
                 <ul class="list-group" id="memory">
 
                 </ul>
+            </div>
+            <div id="editor" class="disabled">            
+                <div class="col-sm">
+                    <hr>
+                    <h3>Routine editor</h3>
+                    <form id="form">
+                    </form>
+
+                    <hr>
+                    <button id="add" class="btn btn-primary" >Add / Modify</button>
+                    <button id="remove" class="btn btn-danger">Remove</button>
+                    <button id="upload" class="btn btn-success">Upload to live</button>
+                </div>
+                <div class="col-sm">
+                    <hr>
+                    <h3>Active routines <span class="badge badge-primary" id="routinesCount">?</span> <span class="badge badge-danger hidden" id="unsaved">unsaved</span></h3>
+                    <ul class="list-group" id="routines">
+                        <li class="list-group-item">Create New </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
