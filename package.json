@@ -1,6 +1,6 @@
 {
-  "name": "jofogas-watcher",
-  "version": "0.1.0",
+  "name": "watcher",
+  "version": "0.1.1",
   "description": "A fullstack node.js application which help you find good deals",
   "main": "app.js",
   "scripts": {
