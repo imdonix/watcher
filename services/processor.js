@@ -131,40 +131,34 @@ class Processor
         }
     }
 
-
-    nofityNow()
-    {
-        this.nofity()
-        .then(count => 
-        {
-            if(count > 0)
-                console.log(`[${this.niceDate()}] [Notify] Message sent! (${count})`)
-            else
-                console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
-        })
-        .catch(error => console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`))
-    }
-
     nofity()
     {
+        
         return new Promise((res,rej) => 
         {
             let dateText = `Report! (${this.niceDate()})`
             let toBeNotified = this.notifications.filter(n => !n.sent)
-                
+            
             if(toBeNotified.length > 0)
             {
                 send(dateText, `${toBeNotified.length} deal aviable`, this.createNiceReport(toBeNotified))
                 .then(() => 
                 {
+                    console.log(`[${this.niceDate()}] [Notify] Message sent! (${count})`)
                     this.remember(toBeNotified)
                     res(toBeNotified.length)
                 })
-                .catch(error => rej(error))
+                .catch(error => 
+                {
+                    console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`)
+                    rej(error)
+                })
             }
             else
+            {
+                console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
                 res(0)
-                  
+            }  
         })
     }
 
