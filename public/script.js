@@ -6,7 +6,9 @@ const remove = document.querySelector('#remove')
 const upload = document.querySelector('#upload')
 const notify = document.querySelector('#notify')
 const scrap = document.querySelector('#scrap')
+const edit = document.querySelector('#edit')
 
+const editor = document.querySelector('#editor')
 const routinesList = document.querySelector('#routines')
 const routinesCount = document.querySelector('#routinesCount')
 const routinesUnsaved = document.querySelector('#unsaved')
@@ -22,6 +24,7 @@ remove.addEventListener('click', deleteRoutine)
 upload.addEventListener('click', uploadRoutine)
 notify.addEventListener('click', notifyMemory)
 scrap.addEventListener('click', manualScrap)
+edit.addEventListener('click', toggleEditor)
 
 init()
 
@@ -46,6 +49,14 @@ function modify()
 
     progress = true
     render()
+}
+
+function toggleEditor()
+{
+    if(editor.classList.contains('disabled'))
+        editor.classList.remove('disabled')
+    else
+        editor.classList.add('disabled')
 }
 
 function deleteRoutine()
@@ -220,6 +231,7 @@ function renderMemory(items)
         li.appendChild(document.createElement('br'))
         li.appendChild(createFoundbadge(item))
         li.appendChild(createValueBadge(item))
+        li.appendChild(document.createElement('br'))
         li.appendChild(createSentBadge(item))
         a.appendChild(li)
         memoryList.appendChild(a)

@@ -9,18 +9,17 @@
     crossorigin="anonymous">
     <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
     <title>Watcher</title>
-    <style>.hidden { visibility: hidden; }</style>
+    <style>
+        .hidden { visibility: hidden; }
+        .disabled { display: none }
+    </style>
 </head>
 <body>  
     <div class="container">
-        <div class="row">
+        <div id="editor" class="row disabled">
             <div class="col-sm">
                 <hr>
-                
-                <sub id="engineDisplay"></sub>
-                <h1>Watcher</h1>
                 <h3>Routine editor</h3>
-
                 <form id="form">
                 </form>
 
@@ -36,19 +35,25 @@
                     <li class="list-group-item">Create New </li>
                 </ul>
             </div>
+        </div>
+        <hr>    
+        <div class="row">
             <div class="col-sm">
-                <hr>
-                <h3>
-                    Items in notify 
+                <sub id="engineDisplay"></sub>
+                <h1>Watcher</h1>
+                <button id="edit" type="button" class="btn btn-default btn-sm">
+                    <i class="fa fa-microchip" aria-hidden="true"></i> Routines
+                </button>
+                <button id="scrap" type="button" class="btn btn-default btn-sm">
+                    <i class="fa fa-refresh" aria-hidden="true"></i> Refresh
+                </button>
+                <button id="notify" type="button" class="btn btn-default btn-sm">
+                    <i class="fa fa-envelope-o" aria-hidden="true"></i> Mail
+                </button>
+                <h4>
+                    Items
                     <span class="badge badge-primary" id="memoryCount">?</span>
-                    <br>
-                    <button id="scrap" type="button" class="btn btn-default btn-sm">
-                        <i class="fa fa-refresh" aria-hidden="true"></i> Refresh
-                    </button>
-                    <button id="notify" type="button" class="btn btn-default btn-sm">
-                        <i class="fa fa-envelope-o" aria-hidden="true"></i> Mail
-                    </button>
-                </h3>
+                </h4>
                 <ul class="list-group" id="memory">
 
                 </ul>
