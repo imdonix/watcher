@@ -1,6 +1,13 @@
 const engineDisplay = document.querySelector('#engineDisplay')
 const form = document.querySelector('#form')
 
+
+const pre = document.querySelector('#pre')
+const loginpass = document.querySelector('#loginpass')
+const loginbtn = document.querySelector('#loginbtn')
+
+const app = document.querySelector('#app')
+const user = document.querySelector('#user')
 const add = document.querySelector('#add')
 const remove = document.querySelector('#remove')
 const upload = document.querySelector('#upload')
@@ -25,8 +32,38 @@ upload.addEventListener('click', uploadRoutine)
 notify.addEventListener('click', notifyMemory)
 scrap.addEventListener('click', manualScrap)
 edit.addEventListener('click', toggleEditor)
+loginbtn.addEventListener('click', login)
 
-init()
+function login()
+{
+    return fetch('login', 
+    { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({pass: cyrb53(loginpass.value) , data : routines}),
+    })
+    .then(response => 
+    {
+        if(response.status == 200)
+        {
+            response.json().then(data =>
+            {
+                user.innerText = data.name
+                app.classList.remove('disabled')
+                pre.classList.add('disabled')
+                init()
+            })
+        }
+        else if(response.status == 401)
+        {
+            document.querySelector('body').innerHTML = 'Bad password'
+        }
+    })
+    .catch(error => document.querySelector('body').innerHTML = 'Bad password')
+
+}
 
 function init()
 {

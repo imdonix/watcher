@@ -10,6 +10,10 @@ module.exports = class API extends Router
         super()
         this.proc = proc
 
+        this.post('/login', auth, (req, res) => {
+            res.status(200).send({ name : res.locals.user })
+        })
+
         this.post('/upload', auth, (req,res) =>
         {
             let data = req.body.data;

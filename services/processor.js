@@ -3,7 +3,7 @@ const ejs = require('ejs');
 const schedule = require('node-schedule');
 
 const send = require('./mailer')
-const settings = require('../settings');
+const settings = require('./cfg');
 
 const Jofogas = require('../srappers/jofogas');
 const Ingatlan = require('../srappers/ingatlan');
@@ -25,8 +25,8 @@ class Processor
         .then(() =>
         {
 
-            let scrapper = schedule.scheduleJob(`*/${settings.DEV ? 1 : settings.SCRAP} * * * *`, () => this.scrap().then())
-            let notifier  = schedule.scheduleJob(`0 ${settings.NOTIFY} * * *`, () => this.nofity().then().catch())
+            let scrapper = schedule.scheduleJob(`*/${settings().dev ? 1 : settings().scrap} * * * *`, () => this.scrap().then())
+            let notifier  = schedule.scheduleJob(`0 ${settings().notify} * * *`, () => this.nofity().then().catch())
 
             this.schedules = [scrapper, notifier]
     
