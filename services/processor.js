@@ -136,7 +136,7 @@ class Processor
         
         return new Promise((res,rej) => 
         {
-            let dateText = `Report! (${this.niceDate()})`
+            let dateText = `Report ${this.niceDate()}`
             let toBeNotified = this.notifications.filter(n => !n.sent)
             
             if(toBeNotified.length > 0)
@@ -144,7 +144,7 @@ class Processor
                 send(dateText, `${toBeNotified.length} deal aviable`, this.createNiceReport(toBeNotified))
                 .then(() => 
                 {
-                    console.log(`[${this.niceDate()}] [Notify] Message sent! (${count})`)
+                    console.log(`[${this.niceDate()}] [Notify] Message sent! (${toBeNotified.length})`)
                     this.remember(toBeNotified)
                     res(toBeNotified.length)
                 })
