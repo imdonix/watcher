@@ -1,14 +1,16 @@
 const nodemailer = require("nodemailer");
 const fs = require('fs/promises')
 const { execSync } = require("child_process");
-
-const settings = require('../settings')
+const settings = require('./cfg');
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.zoho.eu',
   secure: true,
   port: 465,
-  auth: settings.AUTH
+  auth: {
+    user : settings().mail_user,
+    pass : settings().mail_pass,
+  }
 })
 
 async function send(title, text, html)

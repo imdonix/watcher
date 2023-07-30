@@ -14,8 +14,23 @@
         .disabled { display: none }
     </style>
 </head>
-<body>  
-    <div class="container">
+<body>
+    <div id="pre" class="container">
+        <div class="row">
+            <div class="col-md-6 offset-md-3"> 
+                <h1>Watcher</h1>
+                <!-- Password input -->
+                <div class="form-outline mb-4">
+                    <label class="form-label" for="loginpass">Password</label>
+                    <input type="password" id="loginpass" class="form-control" />
+                </div>
+                
+                <!-- Submit button -->
+                <button id="loginbtn" type="submit" class="btn btn-primary btn-block mb-4">Sign in</button>
+            </div> 
+        </div>
+    </div>
+    <div id="app" class="container disabled">
         <div class="row ">
             <div class="col-sm">
                 <sub id="engineDisplay"></sub>
@@ -28,6 +43,9 @@
                 </button>
                 <button id="notify" type="button" class="btn btn-default btn-sm">
                     <i class="fa fa-envelope-o" aria-hidden="true"></i> Mail
+                </button>
+                <button id="notify" type="button" class="btn btn-default btn-sm float-right">
+                    <span id="user">User</span> <i class="fa fa-user" aria-hidden="true"></i>
                 </button>
                 <h4>
                     Items

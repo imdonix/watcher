@@ -1,0 +1,14 @@
+{
+    "port" : "80",
+    "dev" : true,
+    "scrap" : 5,
+    "notify" : 8,
+    "mail_user" : "sample@mail.com",
+    "mail_pass" : "123",
+    "users" : [
+        {
+            "name" : "sample@mail.com",
+            "master" : "123"
+        }
+    ]
+}
