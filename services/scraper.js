@@ -1,5 +1,10 @@
 const { cyrb53 } = require('./crypto')
 
+function abs()
+{
+    throw new Error('Abstract function not implemented')
+}
+
 class Scraper
 {
     constructor(name)
@@ -12,11 +17,11 @@ class Scraper
         return cyrb53(name) % 10000;
     }
 
-    scrap(routine){}
+    scrap(routine) { abs() }
 
-    getOptions(){}
+    getOptions() { abs() }
     
-    getItemModel(){}
+    getItemModel() { abs() }
 }
 
 module.exports = Scraper
