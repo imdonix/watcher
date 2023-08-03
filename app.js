@@ -16,8 +16,8 @@ app.use(express.static('public'))
 
 
 initSettings()
-.then(() => sequelize.sync())
-.then(() => User.create({name: 'tamas.donix@gmail.com', pass: '123'}, { ignoreDuplicates: true }))
+.then(() => sequelize.sync({ force: settings.clean }))
+.then(() => User.create({name: 'Admin', pass: settings.mail_pass}, { ignoreDuplicates: true }))
 .then(() => proc.start())
 .then(() => app.use(api))
 .then(() => app.listen(settings.port, () => console.log(`[${niceDate()}] [HTTP] started on (${settings.port})`)))
