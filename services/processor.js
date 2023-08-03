@@ -12,6 +12,8 @@ const Jofogas = require('../srappers/jofogas');
 const Ingatlan = require('../srappers/ingatlan');
 const Auto = require('../srappers/auto');
 
+const EMAIL_REG = /^[a-zA-Z0-9_.+]*[a-zA-Z][a-zA-Z0-9_.+]*@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/;
+
 class Processor
 {
     scrappers;
@@ -112,40 +114,42 @@ class Processor
 
         for (const user of users) 
         {
-            
-            let dateText = `Report ${niceDate()}`
-            let toBeNotified = await Item.findAll({
-                where: {
-                    owner: user.name,
-                    sent: false
-                }
-            })
-            
-            if(toBeNotified.length > 0)
+            if (user.name.match(EMAIL_REG))
             {
-                try 
-                {
-                    await send(dateText, `${toBeNotified.length} deal aviable`, user.name , this.createNiceReport(toBeNotified))
-                    
-                    for (const item of toBeNotified)
-                    {
-                        item.sent = true
-                        await item.save()
+                let dateText = `Report ${niceDate()}`
+                let toBeNotified = await Item.findAll({
+                    where: {
+                        owner: user.name,
+                        sent: false
                     }
-
-                    total += toBeNotified.length
-
-                    console.log(`[${niceDate()}] [Notify] Message sent to ${user.name}! (${toBeNotified.length})`)
-                } 
-                catch (error) 
+                })
+                
+                if(toBeNotified.length > 0)
                 {
-                    console.error(`[${niceDate()}] [Notify] Mail can't be sent to ${user.name}: ${error}`)
+                    try 
+                    {
+                        await send(dateText, `${toBeNotified.length} deal aviable`, user.name , this.createNiceReport(toBeNotified))
+                        
+                        for (const item of toBeNotified)
+                        {
+                            item.sent = true
+                            await item.save()
+                        }
+    
+                        total += toBeNotified.length
+    
+                        console.log(`[${niceDate()}] [Notify] Message sent to ${user.name}! (${toBeNotified.length})`)
+                    } 
+                    catch (error) 
+                    {
+                        console.error(`[${niceDate()}] [Notify] Mail can't be sent to ${user.name}: ${error}`)
+                    }
                 }
+                else
+                {
+                    console.log(`[${niceDate()}] [Notify] no new deal aviable for ${user.name}.`)
+                }     
             }
-            else
-            {
-                console.log(`[${niceDate()}] [Notify] no new deal aviable for ${user.name}.`)
-            }     
         }
 
         console.log(`[${niceDate()}] [Notify] total of ${total} deals are sent out.`)
@@ -170,7 +174,7 @@ class Processor
             let newItem = {...JSON.parse(item.json)}
             newItem.price = numberWithCommas(newItem.price)
             newItem.sent = item.sent
-            console.log(item.sent)
+
             return newItem
         })
     }
