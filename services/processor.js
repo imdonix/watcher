@@ -4,7 +4,7 @@ const schedule = require('node-schedule');
 const fs = require('fs')
 
 const { User, Routine, Item } = require('./db')
-const { niceDate } = require('./time')
+const { niceDate, dateOnly } = require('./time')
 const send = require('./mailer')
 const { settings } = require('./cfg');
 
@@ -73,6 +73,8 @@ class Processor
 
         const routines = await Routine.findAll()
 
+        console.error(`[${niceDate()}] [Processor] Scrapping started for '${routines.length}' routines`)
+
         for(const routineIns of routines)
         {
             let routine = JSON.parse(routineIns.json)
@@ -103,8 +105,7 @@ class Processor
         }
 
 
-        console.log((await Item.findAll()).length)
-
+        console.error(`[${niceDate()}] [Processor] Scrapping finished, currently '${(await Item.count())}' item in the database`)
     }
 
     async nofity()
@@ -116,7 +117,7 @@ class Processor
         {
             if (user.name.match(EMAIL_REG))
             {
-                let dateText = `Report ${niceDate()}`
+                let dateText = `Report ${dateOnly()}`
                 let toBeNotified = await Item.findAll({
                     where: {
                         owner: user.name,
