@@ -42,7 +42,7 @@ function login()
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({pass: cyrb53(loginpass.value) , data : routines}),
+        body: JSON.stringify({pass: cyrb53(loginpass.value)}),
     })
     .then(response => 
     {
@@ -132,7 +132,14 @@ function loadEngines()
 
 function loadRoutines()
 {
-    return fetch('download')
+    return fetch('download',
+    { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({pass: cyrb53(loginpass.value)}),
+    })
     .then(response => response.json())
     .then((data) => 
     {
@@ -153,14 +160,26 @@ function loadRoutines()
 
 function loadMemory()
 {
-    return fetch('memory')
+    return fetch('memory', { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({pass: cyrb53(loginpass.value)}),
+    })
     .then(response => response.json())
 }
 
 function notifyMemory()
 {
     notify.style.visibility = 'hidden';
-    return fetch('notify', { method : 'POST' })
+    return fetch('notify',     { 
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({pass: cyrb53(loginpass.value)}),
+    })
     .then(response => {
         if(response.status === 200)
         {
@@ -211,21 +230,18 @@ function handle(index)
 
 function uploadRoutine()
 {
-    let password = prompt("Enter the master password");
-
     return fetch('upload', 
     { 
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({pass: cyrb53(password) , data : routines}),
+        body: JSON.stringify({pass: cyrb53(loginpass.value) , data : routines}),
     })
     .then(response => 
     {
         if(response.status == 200)
         {
-            alert('Routines updated')
             loadRoutines()
         }
         else if(response.status == 401)

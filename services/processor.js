@@ -1,7 +1,10 @@
-const fs = require('fs')
+const { Sequelize } = require('sequelize')
 const ejs = require('ejs');
 const schedule = require('node-schedule');
+const fs = require('fs')
 
+const { User, Routine, Item } = require('./db')
+const { niceDate } = require('./time')
 const send = require('./mailer')
 const settings = require('./cfg');
 
@@ -13,31 +16,35 @@ class Processor
 {
     scrappers;
     schedules;
-    notifications;
-    routines;
 
     start()
     {   
         return Promise.resolve()
         .then(() => this.scrapperLoad())
-        .then(() => this.memoryLoad())
-        .then(() => this.routineLoad())
         .then(() =>
         {
 
-            let scrapper = schedule.scheduleJob(`*/${settings().dev ? 1 : settings().scrap} * * * *`, () => this.scrap().then())
+            let scrapper = schedule.scheduleJob(`*/${settings().dev ? 1 : settings().scrap} * * * *`, () => this.scrapAll().then())
             let notifier  = schedule.scheduleJob(`0 ${settings().notify} * * *`, () => this.nofity().then().catch())
 
             this.schedules = [scrapper, notifier]
     
-            console.log("[Processor] live.")
+            console.log(`[${niceDate()}] [Processor] live.`)
         })
-        .catch(err =>console.error(`!! [Processor] cant be started. ${err}`))
+        .catch(err => console.error(`[${niceDate()}] !! [Processor] cant be started. ${err}`))
     }
 
-    getMemory()
+    getMemory(user)
     {
-        return this.preatyPrice(this.notifications);
+        return Item.findAll({
+            where: {
+                owner: user
+            }
+        })
+        .then((items) =>
+        { 
+            return this.preapareItems(items);
+        })
     }
 
     getScrappers()
@@ -47,13 +54,6 @@ class Processor
         })
     }
 
-    reloadRoutines()
-    {
-        this.routineLoad()
-        .then(() => console.log("[Processor] reload done."))
-        .catch(err => console.error(`[Processor] reload failed. ${err}`))
-    }
-
     scrapperLoad()
     {
         const jofogas = new Jofogas()
@@ -61,127 +61,105 @@ class Processor
         const auto = new Auto()
 
         this.scrappers = [jofogas, ingatlan, auto]
-        console.log(`[Processor] Scrappers loaded. (${this.scrappers.length})`)
+        console.log(`[${niceDate()}] [Processor] Scrappers loaded. (${this.scrappers.length})`)
         return Promise.resolve()
     }
 
-    memoryLoad()
+    async scrapAll()
     {
-        return new Promise(res =>
-        {
-            fs.readFile('data/memory.json', (err, data) =>
-            {
-                if(!err)
-                {
-                    this.notifications = JSON.parse(data)
-                    console.log(`[Processor] Memory loaded. (${this.notifications.length})`)
-                }
-                else
-                {
-                    this.notifications = []
-                    console.error(`[Processor] Memory can't be loaded. ${err}`)
-                }
-                res()
-            })
-        })
-    }
+        const Op = Sequelize.Op
 
-    routineLoad()
-    {
-        return new Promise((res, rej) =>
-        {
-            fs.readFile('data/routines.json', (err, data) =>
-            {
-                if(!err)
-                {
-                    this.routines = JSON.parse(data)
-                    console.log(`[Processor] Routines loaded. (${this.routines.length})`)
-                    res()
-                }
-                else
-                {
-                    this.routines = []
-                    console.error('!! [Processor] Routines cant be loaded. ' + err)
-                    rej(err)
-                }
-            })
-        })
-    }
+        const routines = await Routine.findAll()
 
-    async scrap()
-    {
-        for(const routine of this.routines)
+        for(const routineIns of routines)
         {
+            let routine = JSON.parse(routineIns.json)
             let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
-            let index = this.routines.indexOf(routine)
 
             if(engine)
             {
-                let items = await engine.scrap(routine)
-                for(let item of items)
-                if(!this.notifications.find(pre => pre.id == item.id))
+                let founds = await engine.scrap(routine)
+
+                for(let found of founds)
                 {
-                    item.found = this.niceDate()
-                    this.notifications.push(item)
+                    found.found = niceDate()
+                    await Item.create({
+                        id: found.id,
+                        sent: false,
+                        owner: routineIns.owner,
+                        json: JSON.stringify(found)
+                    }, {
+                        ignoreDuplicates: true
+                    })
+                    
                 }
-                console.log(`[${this.niceDate()}] [${index}] [${engine.name}] {${routine.keywords}} found: ${items.length} [${this.notifications.length}]`)
+
+                console.log(`[${niceDate()}] [${engine.name}/${routine.keywords}] found: ${founds.length}`)
             }
             else
-                console.error(`!! [Processor] Scrap engine does not exist with this id: ${routine.engine}`)
+                console.error(`[${niceDate()}] [Processor] !! Scrap engine does not exist with this id: ${routine.engine}`)
         }
+
+
+        console.log((await Item.findAll()).length)
+
     }
 
-    nofity()
+    async nofity()
     {
-        
-        return new Promise((res,rej) => 
+        let total = 0
+        const users = await User.findAll()
+
+        for (const user of users) 
         {
-            let dateText = `Report ${this.niceDate()}`
-            let toBeNotified = this.notifications.filter(n => !n.sent)
+            
+            let dateText = `Report ${niceDate()}`
+            let toBeNotified = await Item.findAll({
+                where: {
+                    owner: user.name,
+                    sent: false
+                }
+            })
             
             if(toBeNotified.length > 0)
             {
-                send(dateText, `${toBeNotified.length} deal aviable`, this.createNiceReport(toBeNotified))
-                .then(() => 
+                try 
                 {
-                    console.log(`[${this.niceDate()}] [Notify] Message sent! (${toBeNotified.length})`)
-                    this.remember(toBeNotified)
-                    res(toBeNotified.length)
-                })
-                .catch(error => 
+                    await send(dateText, `${toBeNotified.length} deal aviable`, user.name , this.createNiceReport(toBeNotified))
+                    
+                    for (const item of toBeNotified)
+                    {
+                        item.sent = true
+                        await item.save()
+                    }
+
+                    total += toBeNotified.length
+
+                    console.log(`[${niceDate()}] [Notify] Message sent to ${user.name}! (${toBeNotified.length})`)
+                } 
+                catch (error) 
                 {
-                    console.error(`[${this.niceDate()}] [Notify] Mail can't be sent: ${error}`)
-                    rej(error)
-                })
+                    console.error(`[${niceDate()}] [Notify] Mail can't be sent to ${user.name}: ${error}`)
+                }
             }
             else
             {
-                console.log(`[${this.niceDate()}] [Notify] no new deal aviable.`)
-                res(0)
-            }  
-        })
+                console.log(`[${niceDate()}] [Notify] no new deal aviable for ${user.name}.`)
+            }     
+        }
+
+        console.log(`[${niceDate()}] [Notify] total of ${total} deals are sent out.`)
+        return total
     }
 
     createNiceReport(items)
     {
-        let preaty = this.preatyPrice(items)
+        let preaty = this.preapareItems(items)
         let html = ejs.render(fs.readFileSync('./views/mail.ejs', 'utf-8'), {items: preaty});
         return html
     }
 
-    niceDate()
-    {
-        let date = new Date()
-        return `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${date.getMinutes()}`
-    }
-
-    remember(items)
-    {
-        items.forEach(item => item.sent = true )
-        fs.writeFileSync('data/memory.json', JSON.stringify(this.notifications))
-    }
-
-    preatyPrice(items)
+    preapareItems(items)
     {
         function numberWithCommas(x) 
         {
@@ -189,8 +167,10 @@ class Processor
         }
 
         return items.map(item => {
-            let newItem = {...item}
-            newItem.price = numberWithCommas(item.price)
+            let newItem = {...JSON.parse(item.json)}
+            newItem.price = numberWithCommas(newItem.price)
+            newItem.sent = item.sent
+            console.log(item.sent)
             return newItem
         })
     }

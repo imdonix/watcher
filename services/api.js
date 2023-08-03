@@ -1,7 +1,7 @@
 const { Router } = require('express');
-const { cyrb53 } = require('./crypto')
+const { Routine } = require('./db')
 const { auth } = require('./auth')
-const fs = require('fs')
+const { niceDate } = require('./time')
 
 module.exports = class API extends Router
 {
@@ -10,46 +10,67 @@ module.exports = class API extends Router
         super()
         this.proc = proc
 
-        this.post('/login', auth, (req, res) => {
+        this.post('/login', auth, (req, res) => 
+        {
+            console.log(`[${niceDate()}] [API] Login /${res.locals.user}/`)
+
             res.status(200).send({ name : res.locals.user })
         })
 
-        this.post('/upload', auth, (req,res) =>
+        this.post('/upload', auth, async (req,res) =>
         {
-            let data = req.body.data;
-            if(data)
+            console.log(`[${niceDate()}] [API] Upload routines /${res.locals.user}/`)
+
+            let routines = req.body.data;
+            
+            await Routine.destroy({
+                where: {
+                    owner: res.locals.user
+                }
+            })
+            
+            for (const data of routines) 
             {
-                fs.writeFile('./data/routines.json', JSON.stringify(data), () => 
-                {
-                    this.proc.reloadRoutines()
-                    res.status(200).send()
+                await Routine.create({
+                    owner: res.locals.user,
+                    json: JSON.stringify(data)
                 })
             }
-            else
-                res.status(500).send()
+
+            res.status(200).send()
         })
         
-        this.get('/download', (_,res) => 
+        this.post('/download', auth , async (_,res) => 
         {
-            fs.readFile('./data/routines.json', (err, data) =>
-            {                                                                           
-                if(err) res.status(500).send()
-                else res.send(data)
+            console.log(`[${niceDate()}] [API] Download routines /${res.locals.user}/`)
+
+            const items = await Routine.findAll({
+                where: {
+                    owner: res.locals.user
+                }
             })
+
+            res.send(items.map(item => JSON.parse(item.json)))
         })
         
-        this.get('/memory', (_,res) => 
+        this.post('/memory', auth , async (_,res) => 
         {
-            res.json(this.proc.getMemory())
+            console.log(`[${niceDate()}] [API] Items /${res.locals.user}/`)
+
+            res.json(await this.proc.getMemory(res.locals.user))
         })
         
         this.get('/scrappers', (_,res) => 
         {
+            console.log(`[${niceDate()}] [API] Request scrappers`)
+
             res.json(this.proc.getScrappers())
         })
         
-        this.post('/notify', (_,res) => 
+        this.post('/notify', auth, (_,res) => 
         {
+            console.log(`[${niceDate()}] [API] Force Notify`)
+
             this.proc.nofity()
             .then((sent) => res.status(200).send({sent}))
             .catch((err) => res.status(500).send(err))
@@ -57,7 +78,9 @@ module.exports = class API extends Router
         
         this.post('/scrap', (_,res) => 
         {
-            this.proc.scrap()
+            console.log(`[${niceDate()}] [API] Force Scrap`)
+
+            this.proc.scrapAll()
             .then(() => res.status(200).send())
         })
 

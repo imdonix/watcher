@@ -1,21 +1,27 @@
 const { cyrb53 } = require('./crypto')
-const settings = require('./cfg');
+const { User } = require('./db')
 
 module.exports = {
     auth: (req, res, next) =>
     {
         let pass = req.body.pass
 
-        for (const user of settings().users) 
-        {
-            if(pass === cyrb53(user.master) || settings.DEV)
-            {
-                res.locals.user = user.name
-                next()
-                return
-            }
-        }
+        User.findAll()
+        .then(users => {
 
-        res.status(401).send()
+            for (const user of users) 
+            {
+                if(pass === cyrb53(user.pass) || settings.DEV)
+                {
+                    res.locals.user = user.name
+                    next()
+                    return
+                }
+            }
+
+            res.status(401).send()
+        })
+        .catch(err => res.status(500).send(`Database error: ${err}`))
+
     }
 }
