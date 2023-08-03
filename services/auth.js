@@ -1,5 +1,6 @@
 const { cyrb53 } = require('./crypto')
 const { User } = require('./db')
+const { settings } = require('./cfg')
 
 module.exports = {
     auth: (req, res, next) =>
@@ -11,7 +12,7 @@ module.exports = {
 
             for (const user of users) 
             {
-                if(pass === cyrb53(user.pass) || settings.DEV)
+                if(pass === cyrb53(user.pass) || settings.dev)
                 {
                     res.locals.user = user.name
                     next()
