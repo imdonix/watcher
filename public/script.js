@@ -14,6 +14,7 @@ const upload = document.querySelector('#upload')
 const notify = document.querySelector('#notify')
 const scrap = document.querySelector('#scrap')
 const edit = document.querySelector('#edit')
+const newuser = document.querySelector('#newuser')
 
 const editor = document.querySelector('#editor')
 const routinesList = document.querySelector('#routines')
@@ -33,6 +34,7 @@ notify.addEventListener('click', notifyMemory)
 scrap.addEventListener('click', manualScrap)
 edit.addEventListener('click', toggleEditor)
 loginbtn.addEventListener('click', login)
+newuser.addEventListener('click', newuserCreate)
 
 function login()
 {
@@ -251,6 +253,41 @@ function uploadRoutine()
     })
     .catch(error => alert('Routines cant be updated - ' + error))
     
+}
+
+function newuserCreate()
+{
+    const newname = prompt('Please give the new user mail adress')
+    const newpass = prompt('Please give the new user password')
+    if(newname.length > 5 && newpass.length > 3)
+    {
+        return fetch('newuser', 
+        { 
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({pass: cyrb53(loginpass.value) , newpass : newpass, newname: newname }),
+        })
+        .then(response => 
+        {
+            if(response.status == 200)
+            {
+                alert('User created')
+            }
+            else if(response.status == 401)
+            {
+                alert('Bad master password')
+            }
+        })
+        .catch(error => alert('User cant be created' + error))
+    }
+    else
+    {
+        alert('Name or pass is to short.')
+    }
+
+
 }
 
 function render()

@@ -1,5 +1,5 @@
 const { Router } = require('express');
-const { Routine } = require('./db')
+const { Routine, User } = require('./db')
 const { auth } = require('./auth')
 const { niceDate } = require('./time')
 
@@ -82,6 +82,20 @@ module.exports = class API extends Router
 
             this.proc.scrapAll()
             .then(() => res.status(200).send())
+        })
+
+        this.post('/newuser', auth , async (req, res) => 
+        {
+            console.log(`[${niceDate()}] [API] Create user /${res.locals.user}/`)
+
+            User.create({
+                name: req.body.newname,
+                pass: req.body.newpass
+            })
+
+            console.log(`[${niceDate()}] [API] User created -> ${req.body.newname}`)
+            
+            res.status(200).send()  
         })
 
     }

@@ -11,7 +11,8 @@ const User = sequelize.define('User', {
         primaryKey: true
     },
     pass: {
-        type: DataTypes.STRING
+        type: DataTypes.STRING,
+        allowNull: false,
     }
 })
 
