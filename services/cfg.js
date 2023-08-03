@@ -12,14 +12,21 @@ const settings = {
 function initSettings(argv)
 {
     const user = minimist(process.argv.slice(2))
-    console.log(user)
+
+    if(user.hasOwnProperty('h'))
+    {
+        for (const key of Object.keys(settings)) 
+        {
+            console.log(`--${key} <value>`)
+        }
+
+        process.exit(0)
+    }
 
     for (const key of Object.keys(user)) 
     {
         settings[key] = user[key]
     }
-
-    console.log(settings)
 
     return Promise.resolve()
 }
