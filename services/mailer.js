@@ -1,6 +1,4 @@
 const nodemailer = require("nodemailer");
-const fs = require('fs/promises')
-const { execSync } = require("child_process");
 const settings = require('./cfg');
 
 const transporter = nodemailer.createTransport({
@@ -13,27 +11,14 @@ const transporter = nodemailer.createTransport({
   }
 })
 
-async function send(title, text, html)
+async function send(title, text, user , html)
 {
-
+  // Mail.ejs is a precompiled boostrapmail template
   let out = html
 
-  try
-  {
-    await fs.writeFile('data/tmp.html', html)
-    execSync('bootstrap-email data/tmp.html > data/out.html')
-    out = (await fs.readFile('data/out.html')).toString()
-    await fs.rm('data/tmp.html')
-    await fs.rm('data/out.html')
-  }
-  catch(err)
-  {
-    console.warn(`[Mailer] Bootsrap compalition failed, raw mail will be sent: ${err}`)
-  }
-
   await transporter.sendMail({
-    from: `Watcher <${settings.AUTH.user}>`,
-    to: settings.USER,
+    from: `Watcher <${settings().mail_user}>`,
+    to: user,
     subject: title,
     text: text,
     html: out,

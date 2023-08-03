@@ -1,3 +1,6 @@
+#Data
+data/
+
 #Mail
 .sass-cache
 data/tmp.html
