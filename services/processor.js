@@ -6,7 +6,7 @@ const fs = require('fs')
 const { User, Routine, Item } = require('./db')
 const { niceDate } = require('./time')
 const send = require('./mailer')
-const settings = require('./cfg');
+const { settings } = require('./cfg');
 
 const Jofogas = require('../srappers/jofogas');
 const Ingatlan = require('../srappers/ingatlan');
@@ -24,8 +24,8 @@ class Processor
         .then(() =>
         {
 
-            let scrapper = schedule.scheduleJob(`*/${settings().dev ? 1 : settings().scrap} * * * *`, () => this.scrapAll().then())
-            let notifier  = schedule.scheduleJob(`0 ${settings().notify} * * *`, () => this.nofity().then().catch())
+            let scrapper = schedule.scheduleJob(`*/${settings.dev ? 1 : settings.scrap} * * * *`, () => this.scrapAll().then())
+            let notifier  = schedule.scheduleJob(`0 ${settings.notify} * * *`, () => this.nofity().then().catch())
 
             this.schedules = [scrapper, notifier]
     

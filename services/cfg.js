@@ -1,19 +1,29 @@
-const fs = require('fs')
+var minimist = require('minimist')
 
-let cache = null
+const settings = {
+    port : '80',
+    dev : false,
+    scrap : 5, // How reguar the scrapping should happen in minutes
+    notify : 8, // When to sent out the the daily mail => 8 means 8:00
+    mail_user : '',
+    mail_pass : '', 
+}
 
-function settings()
+function initSettings(argv)
 {
-    
-    if (cache == null)
+    const user = minimist(process.argv.slice(2))
+    console.log(user)
+
+    for (const key of Object.keys(user)) 
     {
-        const data = fs.readFileSync('data/global.json')
-        cache = JSON.parse(data)
+        settings[key] = user[key]
     }
 
-    return cache
+    console.log(settings)
+
+    return Promise.resolve()
 }
 
 
-module.exports = settings
+module.exports = { initSettings, settings }
 
