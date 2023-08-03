@@ -1,6 +1,6 @@
 {
   "name": "watcher",
-  "version": "0.1.1",
+  "version": "0.2",
   "description": "A fullstack node.js application which help you find good deals",
   "main": "app.js",
   "scripts": {
