@@ -6,8 +6,14 @@ const settings = {
     clean : false, // Clean database
     scrap : 5, // How reguar the scrapping should happen in minutes
     notify : 8, // When to sent out the the daily mail => 8 means 8:00
+
+    
+    mail_host : '',
+    mail_port : '',
     mail_user : '',
-    mail_pass : '', 
+    mail_pass : '',
+
+    http_url : 'http://localhost:#/dev',
 }
 
 function initSettings(argv)
@@ -27,6 +33,12 @@ function initSettings(argv)
     for (const key of Object.keys(user)) 
     {
         settings[key] = user[key]
+    }
+
+    //If no url provided replace the X with the port
+    if (! ('http_url' in user))
+    {
+        settings['http_url'] = settings['http_url'].replace('#', settings['port'])
     }
 
     return Promise.resolve()

@@ -5,7 +5,6 @@ const fs = require('fs')
 
 const { User, Routine, Item } = require('./db')
 const { niceDate, dateOnly } = require('./time')
-const send = require('./mailer')
 const { settings } = require('./cfg');
 
 const Jofogas = require('../srappers/jofogas');
@@ -16,8 +15,14 @@ const EMAIL_REG = /^[a-zA-Z0-9_.+]*[a-zA-Z][a-zA-Z0-9_.+]*@[a-zA-Z0-9-]+\.[a-zA-
 
 class Processor
 {
+    telematic;
     scrappers;
     schedules;
+
+    constructor(telematic)
+    {
+        this.telematic = telematic
+    }
 
     start()
     {   
@@ -129,17 +134,19 @@ class Processor
                 {
                     try 
                     {
-                        await send(dateText, `${toBeNotified.length} deal aviable`, user.name , this.createNiceReport(toBeNotified))
-                        
-                        for (const item of toBeNotified)
+                        if(await this.telematic.send(dateText, user.name , this.createNiceReport(toBeNotified)))
                         {
-                            item.sent = true
-                            await item.save()
+                        
+                            for (const item of toBeNotified)
+                            {
+                                item.sent = true
+                                await item.save()
+                            }
+        
+                            total += toBeNotified.length
+        
+                            console.log(`[${niceDate()}] [Notify] Message sent to ${user.name}! (${toBeNotified.length})`)
                         }
-    
-                        total += toBeNotified.length
-    
-                        console.log(`[${niceDate()}] [Notify] Message sent to ${user.name}! (${toBeNotified.length})`)
                     } 
                     catch (error) 
                     {
