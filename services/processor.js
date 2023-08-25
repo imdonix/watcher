@@ -78,8 +78,6 @@ class Processor
 
         const routines = await Routine.findAll()
 
-        console.error(`[${niceDate()}] [Processor] Scrapping started for '${routines.length}' routines`)
-
         for(const routineIns of routines)
         {
             let routine = JSON.parse(routineIns.json)
@@ -103,14 +101,14 @@ class Processor
                     
                 }
 
-                console.log(`[${niceDate()}] [${engine.name}/${routine.keywords}] found: ${founds.length}`)
+                console.log(`[${niceDate()}] [Scrap] /${engine.name}->${routine.keywords}/ found: ${founds.length}`)
             }
             else
                 console.error(`[${niceDate()}] [Processor] !! Scrap engine does not exist with this id: ${routine.engine}`)
         }
 
 
-        console.error(`[${niceDate()}] [Processor] Scrapping finished, currently '${(await Item.count())}' item in the database`)
+        console.log(`[${niceDate()}] [Processor] Scrapping finished, currently '${(await Item.count())}' item in the database`)
     }
 
     async nofity()
@@ -134,7 +132,7 @@ class Processor
                 {
                     try 
                     {
-                        if(await this.telematic.send(dateText, user.name , this.createNiceReport(toBeNotified)))
+                        if(await this.telematic.send(dateText, user.name, toBeNotified, this.createNiceReport(toBeNotified)))
                         {
                         
                             for (const item of toBeNotified)

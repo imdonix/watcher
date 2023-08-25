@@ -100,7 +100,7 @@ module.exports = class API extends Router
 
         this.post('/dev', (req, res) =>
         {
-            console.log(`[${niceDate()}] [DEV/Response] ${req.body}`)
+            console.log(`[${niceDate()}] [DEV/Response] ${JSON.stringify(req.body.raw)}`)
             res.status(200).send()
         })
 

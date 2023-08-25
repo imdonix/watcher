@@ -12,7 +12,7 @@ module.exports = {
 
             for (const user of users) 
             {
-                if(pass === cyrb53(user.pass) || settings.dev)
+                if(pass === cyrb53(user.pass))
                 {
                     res.locals.user = user.name
                     next()

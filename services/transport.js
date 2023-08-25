@@ -1,8 +1,8 @@
 class Transport
 {
-    name() {}
-    required() {}
-    async send(title, user, html) {}
+    name() { throw new Error('Not implemented.') }
+    required() { throw new Error('Not implemented.') }
+    async send(title, user, raw, html) { throw new Error('Not implemented.') }
 }
 
 module.exports = Transport

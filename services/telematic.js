@@ -37,14 +37,14 @@ class Telematic
         }
     }
 
-    async send(title, user, html)
+    async send(title, user, raw, html)
     {
         let tries = 0
         for (const transport of this.active) 
         {
             try 
             {
-                await transport.send(title, user, html)
+                await transport.send(title, user, raw, html)
                 tries++
             } 
             catch (error) 

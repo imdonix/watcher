@@ -8,12 +8,12 @@ class HTTP extends Transport
   name() { return 'Http' }
   required() { return ['http_url'] }
 
-  async send(title, user, html)
+  async send(title, user, raw, html)
   {
     // Mail.ejs is a precompiled boostrapmail template
     let out = html
         
-    const body = {title, user, html : out}
+    const body = {title, user, raw}
 
     await fetch(settings.http_url, {
         method: 'post',

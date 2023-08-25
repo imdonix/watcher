@@ -13,7 +13,7 @@ class Mail extends Transport
     'mail_pass',
   ]}
 
-  async send(title, user, html)
+  async send(title, user, raw, html)
   {
     // Mail.ejs is a precompiled boostrapmail template
     let out = html
