@@ -15,6 +15,7 @@ const notify = document.querySelector('#notify')
 const scrap = document.querySelector('#scrap')
 const edit = document.querySelector('#edit')
 const newuser = document.querySelector('#newuser')
+const logout = document.querySelector('#logout')
 
 const editor = document.querySelector('#editor')
 const routinesList = document.querySelector('#routines')
@@ -35,7 +36,25 @@ scrap.addEventListener('click', manualScrap)
 edit.addEventListener('click', toggleEditor)
 loginbtn.addEventListener('click', login)
 newuser.addEventListener('click', newuserCreate)
+logout.addEventListener('click', doLogout)
 
+sessionCheck()
+
+function sessionCheck()
+{
+    const p = Cookies.get('pass')
+    if(p)
+    {
+        loginpass.value = p
+        login()
+    }
+}
+
+function doLogout()
+{
+    Cookies.remove('pass')
+    location.reload()
+}
 
 function login()
 {
@@ -51,6 +70,7 @@ function login()
     {
         if(response.status == 200)
         {
+            Cookies.set('pass', loginpass.value, { expires: 365 })
             response.json().then(data =>
             {
                 user.innerText = data.name
