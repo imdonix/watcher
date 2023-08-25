@@ -1,6 +1,6 @@
 # Watcher
 
-This app helps you to find "good deals" on the web. 
+This application helps you to find "good deals" on different online sites.
 
 Currently supported sites:
 
@@ -10,8 +10,8 @@ Currently supported sites:
 
 ## How it works
 
-The app scrape the sites and check if a new `deal` is available by the user requirements.
-After collecting the `deal`s the user get notified by email.
+Based on Routine you determine the application will scrape the desired sites and check if a new deal is available by the Routine requirements.
+After collecting the deals the user gets notified several ways.
 
 ## Installation
 
@@ -23,30 +23,24 @@ cd jofogas-watcher
 npm i
 ```
 
-2. [Optional] Create a new or use a existing Gmail account for nodemailer - [Help](https://nodemailer.com/usage/using-gmail/)  
+2. [Optional] Create a new email account with [SMTP](https://en.wikipedia.org/wiki/Simple_Mail_Transfer_Protocol) support.
 
-3. Edit the `settings.js` file:
+[!NOTE]
+I recommend using [Zoho](mail.zoho.com), they provide custom domain names and full support for SMTP in their free plan.
 
-```javascript
-{
-    PORT: process.env.PORT || 80,
-    AUTH: { // The sender gmail account 
-        user: 'jofogas.watcher@gmail.com', 
-        pass: 'Sv5g9pQjtJ4xr5p8M54Z5Qq2tYvDbSTatYRQpYVZz4rJjGmZ34NX6qWEqMBLDpLG' 
-    },
-    USER: "donix@gmail.com", // The reciver email
-    SCRAP: 5, // How ofter you want to scrap the routines in minutes - For example 5 is every 5 minues 
-    NOTIFY: 8, // When you want to recive the notifier e-mail in hour - For example 8 is the e-mail will be sent in 8:00 AM
-    MASTER: 'jofogas' // The master password to modify your routines
-}
-```
-
-4. Run. 
+3. [Optional] Check parameters with:
 
 ```bash
-npm start
+node ./app.js -h
 ```
+
+3. Start the application. 
+
+```bash
+node ./app.js --mail_user <USER> --mail_pass <PASS> --mail_host <HOST> --mail_port <PORT>
+```
+4. Open `localhost:port` nad the password for the Admin user will be the same as `--mail_pass`
 
 ## Preview
 
-![In use](https://raw.githubusercontent.com/imdonix/jofogas-watcher/main/doc/preview.png)
+![In use](doc/preview.png)
