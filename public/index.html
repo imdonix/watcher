@@ -12,26 +12,62 @@
     <style>
         .hidden { visibility: hidden; }
         .disabled { display: none }
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
     </style>
 </head>
 <body>
-    <div id="pre" class="container">
+    <div id="loading" class="loading">
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="sr-only">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="pre" class="container disabled">
         <div class="row">
             <div class="col-md-6 offset-md-3"> 
                 <h1>Watcher</h1>
-                <!-- Password input -->
-                <div class="form-outline mb-4">
-                    <label class="form-label" for="loginpass">Password</label>
-                    <input type="password" id="loginpass" class="form-control" />
-                </div>
                 
-                <!-- Submit button -->
-                <button id="loginbtn" type="submit" class="btn btn-primary btn-block mb-4">Sign in</button>
+                <form id="loginfrom" action="#">
+                    <div class="form-outline mb-4">
+                        <label class="form-label" for="loginpass">Password</label>
+                        <input type="password" id="loginpass" class="form-control" />
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block mb-4">Sign in</button>
+                </form>
+                <div id="loginerror" class="alert alert-danger hidden">
+                    <strong>Bad Password!</strong> Please try again
+                </div>
             </div> 
         </div>
     </div>
-    <div id="app" class="container disabled">
 
+    <div id="pre" class="container disabled">
+        <div class="row">
+            <div class="col-md-6 offset-md-3"> 
+                <h1>Watcher</h1>
+                
+                <form id="loginfrom" action="#">
+                    <div class="form-outline mb-4">
+                        <label class="form-label" for="loginpass">Password</label>
+                        <input type="password" id="loginpass" class="form-control" />
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block mb-4">Sign in</button>
+                </form>
+                <div id="loginerror" class="alert alert-danger hidden">
+                    <strong>Bad Password!</strong> Please try again
+                </div>
+            </div> 
+        </div>
+    </div>
+
+    <div id="app" class="container disabled">
         <div class="row ">
             <div class="col-sm">
                 <sub id="engineDisplay"></sub>
