@@ -8,8 +8,6 @@ const maxTimeOut = 2;
 
 const CLIENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.72 Safari/537.36'
 const URL = 'https://www.hasznaltauto.hu/talalatilista'
-const DEPTH = 1
-const TIMEOUT = 1250
 
 function scrapHasznaltAuto(options, callback)
 {
@@ -74,14 +72,10 @@ function buildUrl(settings, page)
     return `${URL}/${settings.key}/page${page}`
 }
 
-function initSettings(options)
+function initSettings(settings)
 {
-    if(!options.key) throw new Error('Key is required for scraping');
-
     return {
-        depth: options.depht || DEPTH,
-        timeout: options.timeout || TIMEOUT,
-        key: options.key
+        key: settings.key
     }
 }
 
@@ -92,7 +86,7 @@ class Auto extends Scraper
         return 'hasznaltauto.hu'
     }
 
-    scrap(routine)
+    scrapPage(routine)
     {
         return new Promise((res, _) => 
         {
@@ -116,12 +110,12 @@ class Auto extends Scraper
         return [
             {
                 id : "keywords",
-                name : "Tag (only for the user)",
+                name : "Tag (name in the list)",
                 type : "text" 
             },
             {
                 id : "key",
-                name : "Key",
+                name : "Do a manual search and insert the Key here www.hasznaltauto.hu/talalatilista/<KEY>",
                 type : "text" 
             }
         ]
@@ -136,11 +130,6 @@ class Auto extends Scraper
             "price",
             "ad"
         ]
-    }
-
-    timeOut()
-    {
-        return Math.floor(Math.random() * Math.floor(maxTimeOut * 1000)) + 1000;
     }
 
 }

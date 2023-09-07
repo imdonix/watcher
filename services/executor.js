@@ -21,9 +21,10 @@ class Executor
         const ingatlan = new Ingatlan()
         const auto = new Auto()
 
-        this.scrappers = [jofogas]
+        this.scrappers = [jofogas, auto]
         this.cooldown = new Map()
         this.cooldown[jofogas] = moment()
+        this.cooldown[auto] = moment()
 
         this.queue = Array()
 

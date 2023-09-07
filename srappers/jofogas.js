@@ -3,6 +3,7 @@ const { parse } = require('node-html-parser')
 const { cyrb53 } = require('../services/crypto')
 const Scraper = require("../services/scraper")
 
+const CLIENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.72 Safari/537.36'
 const DOMAIN_NAME = "https://www.jofogas.hu/magyarorszag"
 
 async function scrapJofogasPage(settings, page)
@@ -39,7 +40,7 @@ async function processPage(url, settings)
 {
     const items = Array()
 
-    const result = await fetch(url, { headers : {'Content-Type' : 'text/plain; charset=iso-8859-2'}})
+    const result = await fetch(url, { headers : { 'Content-Type' : 'text/plain; charset=iso-8859-2', 'User-Agent' : CLIENT }})
     const raw = await result.arrayBuffer()
     const decoder = new TextDecoder("iso-8859-2")
     const text = decoder.decode(raw)
