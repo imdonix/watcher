@@ -3,53 +3,67 @@ const { parse } = require('node-html-parser')
 const { cyrb53 } = require('../services/crypto')
 const Scraper = require("../services/scraper")
 
-const name = "jofogas.hu"
-const depth = 5;
-const maxTimeOut = 2;
-
-const DEFAULT_DEPHT = 5
 const DOMAIN_NAME = "https://www.jofogas.hu/magyarorszag"
-const SLEEP = 200
 
-function scrapJofogas(keywords, settings, callback)
+async function scrapJofogas(settings, page)
 {
-    let proper = initSettings(settings ? settings : {})
-    processPage(buildUrl(keywords, proper), [], proper.depht, proper, callback)
+    const adjusted = initSettings(settings ? settings : {})
+    return processPage(buildUrl(adjusted, page), adjusted)
 }
 
-function processPage(url, items, iterations, settings, finalize)
+function initSettings(settings)
 {
-    fetch(url, { headers : {'Content-Type' : 'text/plain; charset=iso-8859-2'}})
-    .then(res => res.textConverted())
-    .then(body => 
-        {
-            const domRoot = parse(body)
-            for(const domItem of domRoot.querySelectorAll('.list-item'))
-            {
-                let item = processDomItem(domItem)
-                if(item)
-                    if(!settings.minPrice || settings.minPrice < item.price)
-                        if(!settings.maxPrice || settings.maxPrice > item.price)
-                            if(settings.enableCompany || !item.company)
-                                if(settings.enablePost || !item.post)
-                                    items.push(item)
-            }
-            next(domRoot)
-        })
-    .catch(_ => next(null))
-
-    function next(root)
-    {
-        let next = nextPage(root)
-        if(iterations > 0 && next)
-            setTimeout(() => processPage(next, items, --iterations, settings, finalize), settings.sleep) 
-        else
-            finalize(items)
+    return {
+        keywords: settings.keywords || null,
+        domain: settings.domain || DOMAIN_NAME,
+        minPrice : settings.minPrice || null,
+        maxPrice : settings.maxPrice || null,
+        enableCompany : settings.enableCompany || false,
+        enablePost: settings.enablePost || false
     }
+}
+
+function buildUrl(settings, page)
+{
+    return settings.domain + '?' +
+    new URLSearchParams(
+    {
+        'q' : settings.keywords,
+        'o' : page,
+        'max_price' : settings.maxPrice ? settings.maxPrice : '',
+        'min_price' : settings.minPrice ? settings.minPrice : '',
+    });
+}
+
+async function processPage(url, settings)
+{
+    const items = Array()
+
+    const result = await fetch(url, { headers : {'Content-Type' : 'text/plain; charset=iso-8859-2'}})
+    const raw = await result.text()
+    const domRoot = parse(raw)
+    
+    for(const domItem of domRoot.querySelectorAll('.list-item'))
+    {
+        let item = processDomItem(domItem)
+        if(item)
+            if(!settings.minPrice || settings.minPrice < item.price)
+                if(!settings.maxPrice || settings.maxPrice > item.price)
+                    if(settings.enableCompany || !item.company)
+                        if(settings.enablePost || !item.post)
+                            items.push(item)
+    }
+    
+    return {items, page : nextPage(domRoot) }
 }
 
 function processDomItem(item)
 {   
+    function toId(url)
+    {
+        return url.slice(url.indexOf('#')+1)
+    }
+
     try
     {
         const itemRoot = parse(item);
@@ -57,7 +71,6 @@ function processDomItem(item)
 
         return {
             id: toId(metaAttributes.find(prop => prop.itemprop == 'url').content),
-            pos: parseInt(metaAttributes.find(prop => prop.itemprop == 'position').content),
             name: metaAttributes.find(prop => prop.itemprop == 'name').content,
             price: parseInt(itemRoot.querySelector('.price-value').attributes.content),
             image: itemRoot.querySelector('img').attributes['src'],
@@ -65,73 +78,50 @@ function processDomItem(item)
             company: itemRoot.querySelector('.badge-company_ad') != null,
             post: itemRoot.querySelector('.badge-box') != null
         }
-    } catch(_){ return null }
+    } 
+    catch(a){ console.error(a) }
 }
 
-function toId(url)
-{
-    return url.slice(url.indexOf('#')+1)
-}
+
 
 function nextPage(root)
 {
-    if(root)
-        return root.querySelector('.ad-list-pager-item-next').attributes.href
-    else 
-        return null
-}
-
-function initSettings(settings)
-{
-    return {
-        depht: settings.depht || DEFAULT_DEPHT,
-        domain: settings.domain || DOMAIN_NAME,
-        minPrice : settings.minPrice || null,
-        maxPrice : settings.maxPrice || null,
-        sleep : settings.sleep || SLEEP,
-        enableCompany : settings.enableCompany || false,
-        enablePost: settings.enablePost || false
+    const elem = root.querySelector('.ad-list-pager-item-next')?.attributes?.href
+    if(elem)
+    {
+        const params = new URLSearchParams(elem)
+        return params.get('o')
+    }
+    else
+    {
+        return NaN
     }
 }
 
-function buildUrl(keywords, settings)
-{
-    return settings.domain + '?' +
-    new URLSearchParams(
-    {
-        'q' : keywords,
-        'max_price' : settings.maxPrice ? settings.maxPrice : '',
-        'min_price' : settings.minPrice ? settings.minPrice : ''
-    });
-}
 
 class Jofogas extends Scraper
 {
-    constructor()
-    {
-        super(name)
-        this.id = this.uniqueID(name)
+    id()
+    {      
+        return 'jofogas.hu'
     }
 
-    scrap(routine)
+    async scrap(routine, page)
     {
-        return new Promise((res, _) => 
-        {
-            let settings = {
-                depht: depth,
-                domain: routine.domain,
-                minPrice : routine.minPrice,
-                maxPrice : routine.maxPrice,
-                sleep : this.timeOut(),
-                enableCompany : routine.enableCompany,
-                enablePost: routine.enablePost
-            }
 
-            scrapJofogas(routine.keywords, settings, items => {
-                items.forEach(item => item.id = cyrb53(`${item.id}-${name}`))
-                res(items)
-            })
-        })
+        let settings = {
+            keywords: routine.keywords,
+            domain: routine.domain,
+            minPrice : routine.minPrice,
+            maxPrice : routine.maxPrice,
+            enableCompany : routine.enableCompany,
+            enablePost: routine.enablePost
+        }
+
+        const result = await scrapJofogas(settings, page)
+        result.items.forEach(item => item.id = cyrb53(`${this.name}|${item.id}`)) // PostProcess item IDs
+
+        return result
     }
 
     getOptions()
@@ -140,13 +130,13 @@ class Jofogas extends Scraper
             {
                 id : "keywords",
                 name : "Keywords",
-                type : "text" 
+                type : "text",
             },
             {
                 id : "domain",
                 name : "Platform URL",
                 type : "url",
-                default : `http://${name}/budapest`
+                default : `http://jofogas.hu/budapest`
             },
             {
                 id : "minPrice",
@@ -175,7 +165,6 @@ class Jofogas extends Scraper
     {
         return [
             "id", 
-            "pos", 
             "name", 
             "price", 
             "url", 
@@ -184,12 +173,6 @@ class Jofogas extends Scraper
             "found"
         ]
     }
-
-    timeOut()
-    {
-        return Math.floor(Math.random() * Math.floor(maxTimeOut * 1000)) + 1000;
-    }
-
 
 }
 

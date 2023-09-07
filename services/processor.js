@@ -67,15 +67,13 @@ class Processor
         const ingatlan = new Ingatlan()
         const auto = new Auto()
 
-        this.scrappers = [jofogas, ingatlan, auto]
-        console.log(`[${niceDate()}] [Processor] Scrappers loaded. (${this.scrappers.length})`)
+        this.scrappers = [jofogas]
+        console.log(`[${niceDate()}] [Processor] Scrappers loaded. |${this.scrappers.map(x => x.name).join(' & ')}|`)
         return Promise.resolve()
     }
 
     async scrapAll()
     {
-        const Op = Sequelize.Op
-
         const routines = await Routine.findAll()
 
         for(const routineIns of routines)

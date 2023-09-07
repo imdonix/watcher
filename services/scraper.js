@@ -7,21 +7,11 @@ function abs()
 
 class Scraper
 {
-    constructor(name)
-    {
-        this.name = name;
-    }
+    id() { abs(); return '' }
 
-    uniqueID(name)
-    {
-        return cyrb53(name) % 10000;
-    }
+    getOptions() { abs(); return {} }
 
-    scrap(routine) { abs() }
-
-    getOptions() { abs() }
-    
-    getItemModel() { abs() }
+    async scrap(routine, page) { abs(); return {items : Array(), page : 0} }
 }
 
 module.exports = Scraper
