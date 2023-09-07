@@ -3,7 +3,6 @@ const { parse } = require('node-html-parser')
 const { cyrb53 } = require('../services/crypto')
 const Scraper = require("../services/scraper")
 
-const name = "hasznaltauto.hu"
 const depth = 2;
 const maxTimeOut = 2;
 
@@ -88,10 +87,9 @@ function initSettings(options)
 
 class Auto extends Scraper
 {
-    constructor()
+    id()
     {
-        super(name)
-        this.id = this.uniqueID(name)
+        return 'hasznaltauto.hu'
     }
 
     scrap(routine)

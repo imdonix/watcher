@@ -5,7 +5,7 @@ const Scraper = require("../services/scraper")
 
 const DOMAIN_NAME = "https://www.jofogas.hu/magyarorszag"
 
-async function scrapJofogas(settings, page)
+async function scrapJofogasPage(settings, page)
 {
     const adjusted = initSettings(settings ? settings : {})
     return processPage(buildUrl(adjusted, page), adjusted)
@@ -40,8 +40,11 @@ async function processPage(url, settings)
     const items = Array()
 
     const result = await fetch(url, { headers : {'Content-Type' : 'text/plain; charset=iso-8859-2'}})
-    const raw = await result.text()
-    const domRoot = parse(raw)
+    const raw = await result.arrayBuffer()
+    const decoder = new TextDecoder("iso-8859-2")
+    const text = decoder.decode(raw)
+
+    const domRoot = parse(text)
     
     for(const domItem of domRoot.querySelectorAll('.list-item'))
     {
@@ -106,7 +109,7 @@ class Jofogas extends Scraper
         return 'jofogas.hu'
     }
 
-    async scrap(routine, page)
+    async scrapPage(routine, page)
     {
 
         let settings = {
@@ -118,7 +121,7 @@ class Jofogas extends Scraper
             enablePost: routine.enablePost
         }
 
-        const result = await scrapJofogas(settings, page)
+        const result = await scrapJofogasPage(settings, page)
         result.items.forEach(item => item.id = cyrb53(`${this.name}|${item.id}`)) // PostProcess item IDs
 
         return result

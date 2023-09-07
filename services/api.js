@@ -5,10 +5,11 @@ const { niceDate } = require('./time')
 
 module.exports = class API extends Router
 {
-    constructor(proc)
+    constructor(proc, exec)
     {
         super()
         this.proc = proc
+        this.exec = exec
 
         this.post('/login', auth, (req, res) => 
         {
@@ -64,7 +65,7 @@ module.exports = class API extends Router
         {
             console.log(`[${niceDate()}] [API] Request scrappers`)
 
-            res.json(this.proc.getScrappers())
+            res.json(this.exec.getScrappers())
         })
         
         this.post('/notify', auth, (_,res) => 
@@ -80,7 +81,7 @@ module.exports = class API extends Router
         {
             console.log(`[${niceDate()}] [API] Force Scrap`)
 
-            this.proc.scrapAll()
+            this.proc.enqueueRoutines()
             .then(() => res.status(200).send())
         })
 

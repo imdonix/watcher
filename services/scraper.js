@@ -11,7 +11,7 @@ class Scraper
 
     getOptions() { abs(); return {} }
 
-    async scrap(routine, page) { abs(); return {items : Array(), page : 0} }
+    async scrapPage(routine, page) { abs(); return {items : Array(), page : 0} }
 }
 
 module.exports = Scraper

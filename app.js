@@ -9,15 +9,16 @@ const { sequelize, User } = require('./services/db')
 const Processor = require('./services/processor')
 const API = require('./services/api')
 const Telematic = require('./services/telematic')
+const Executor = require('./services/executor')
 
 
 const app = express()
 const telematic = new Telematic()
-const proc = new Processor(telematic)
-const api = new API(proc)
+const executor = new Executor()
+const proc = new Processor(telematic, executor)
+const api = new API(proc, executor)
 
 app.use(express.json({limit: '50mb'}))
-app.use(express.urlencoded({limit: '50mb'}))
 app.use(express.static('public'))
 
 

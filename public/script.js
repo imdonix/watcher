@@ -370,7 +370,7 @@ function renderEngines()
         let span = document.createElement('span')
         span.classList.add('badge')
         span.classList.add('badge-light')
-        span.innerText = ` ${engine.name} `
+        span.innerText = ` ${engine.id} `
         engineDisplay.appendChild(span)
         engineDisplay.innerHTML += "&nbsp"
     }
@@ -402,7 +402,7 @@ function renderSelectEngine()
     {
         const option = document.createElement('option')
         option.value = engine.id
-        option.innerText = engine.name
+        option.innerText = engine.id
         select.appendChild(option)
     }
     select.value = currentEngine.id

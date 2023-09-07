@@ -3,7 +3,6 @@ const { parse } = require('node-html-parser')
 const { cyrb53 } = require('../services/crypto')
 const Scraper = require("../services/scraper")
 
-const name = "ingatlan.com"
 const depth = 3;
 const maxTimeOut = 2;
 
@@ -88,10 +87,9 @@ function initSettings(options)
 
 class Ingatlan extends Scraper
 {
-    constructor()
+    id()
     {
-        super(name)
-        this.id = this.uniqueID(name)
+        return 'ingatlan.com'
     }
 
     scrap(routine)

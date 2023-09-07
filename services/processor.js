@@ -1,37 +1,33 @@
-const { Sequelize } = require('sequelize')
+const fs = require('fs')
 const ejs = require('ejs');
 const schedule = require('node-schedule');
-const fs = require('fs')
 
 const { User, Routine, Item } = require('./db')
 const { niceDate, dateOnly } = require('./time')
 const { settings } = require('./cfg');
 
-const Jofogas = require('../srappers/jofogas');
-const Ingatlan = require('../srappers/ingatlan');
-const Auto = require('../srappers/auto');
-
 const EMAIL_REG = /^[a-zA-Z0-9_.+]*[a-zA-Z][a-zA-Z0-9_.+]*@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/;
 
 class Processor
 {
+    executor;
     telematic;
     scrappers;
     schedules;
 
-    constructor(telematic)
+    constructor(telematic, executor)
     {
         this.telematic = telematic
+        this.executor = executor
     }
 
     start()
     {   
         return Promise.resolve()
-        .then(() => this.scrapperLoad())
         .then(() =>
         {
 
-            let scrapper = schedule.scheduleJob(`*/${settings.dev ? 1 : settings.scrap} * * * *`, () => this.scrapAll().then())
+            let scrapper = schedule.scheduleJob(`*/${settings.dev ? 1 : settings.scrap} * * * *`, () => this.enqueueRoutines().then())
             let notifier  = schedule.scheduleJob(`0 ${settings.notify} * * *`, () => this.nofity().then().catch())
 
             this.schedules = [scrapper, notifier]
@@ -54,59 +50,15 @@ class Processor
         })
     }
 
-    getScrappers()
-    {
-        return this.scrappers.map(scrap => {
-            return {...scrap, options : scrap.getOptions()}
-        })
-    }
-
-    scrapperLoad()
-    {
-        const jofogas = new Jofogas()
-        const ingatlan = new Ingatlan()
-        const auto = new Auto()
-
-        this.scrappers = [jofogas]
-        console.log(`[${niceDate()}] [Processor] Scrappers loaded. |${this.scrappers.map(x => x.name).join(' & ')}|`)
-        return Promise.resolve()
-    }
-
-    async scrapAll()
+    async enqueueRoutines()
     {
         const routines = await Routine.findAll()
-
         for(const routineIns of routines)
         {
-            let routine = JSON.parse(routineIns.json)
-            let engine = this.scrappers.find(scrapper => scrapper.id == routine.engine)
-
-            if(engine)
-            {
-                let founds = await engine.scrap(routine)
-
-                for(let found of founds)
-                {
-                    found.found = niceDate()
-                    await Item.create({
-                        id: found.id,
-                        sent: false,
-                        owner: routineIns.owner,
-                        json: JSON.stringify(found)
-                    }, {
-                        ignoreDuplicates: true
-                    })
-                    
-                }
-
-                console.log(`[${niceDate()}] [Scrap] /${engine.name}->${routine.keywords}/ found: ${founds.length}`)
-            }
-            else
-                console.error(`[${niceDate()}] [Processor] !! Scrap engine does not exist with this id: ${routine.engine}`)
+            this.executor.enqueue(routineIns.owner, JSON.parse(routineIns.json), 0)
         }
 
-
-        console.log(`[${niceDate()}] [Processor] Scrapping finished, currently '${(await Item.count())}' item in the database`)
+        console.log(`[${niceDate()}] [Processor] ${routines.length} routine are enqueued.`)
     }
 
     async nofity()
