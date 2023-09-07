@@ -26,8 +26,7 @@ const routinesCount = document.querySelector('#routinesCount')
 const routinesUnsaved = document.querySelector('#unsaved')
 
 const memoryList = document.querySelector('#memory')
-const memoryCount = document.querySelector('#memoryCount')
-const memoryCountMax = 10
+const memoryCountMax = 100
 
 let routines, selected, progress, engines, currentEngine
 
@@ -344,7 +343,6 @@ function renderMemory(items)
 {
 
     memoryList.innerHTML = ''
-    memoryCount.innerText = items.length > memoryCountMax ? `${memoryCountMax}+` : items.length    
 
     for(const item of items.reverse().splice(0,memoryCountMax))
     {
@@ -494,7 +492,7 @@ function generateRoutineDOM(routine, place)
     let engineInfo = findEngine(routine.engine);
     engine.classList.add('badge')
     engine.classList.add(engineInfo ? 'badge-light' : 'badge-danger')
-    engine.innerText = `${engineInfo ? engineInfo.name : "Corrupted"}`
+    engine.innerText = `${engineInfo ? engineInfo.id : "Corrupted"}`
 
 
     li.appendChild(engine)
