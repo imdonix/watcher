@@ -1,12 +1,15 @@
 const engineDisplay = document.querySelector('#engineDisplay')
 const form = document.querySelector('#form')
 
-
-const pre = document.querySelector('#pre')
-const loginpass = document.querySelector('#loginpass')
-const loginbtn = document.querySelector('#loginbtn')
-
+const loading = document.querySelector('#loading')
 const app = document.querySelector('#app')
+const pre = document.querySelector('#pre')
+
+const loginpass = document.querySelector('#loginpass')
+const loginfrom = document.querySelector('#loginfrom')
+const loginerror = document.querySelector('#loginerror')
+
+
 const user = document.querySelector('#user')
 const add = document.querySelector('#add')
 const remove = document.querySelector('#remove')
@@ -34,7 +37,7 @@ upload.addEventListener('click', uploadRoutine)
 notify.addEventListener('click', notifyMemory)
 scrap.addEventListener('click', manualScrap)
 edit.addEventListener('click', toggleEditor)
-loginbtn.addEventListener('click', login)
+loginfrom.addEventListener('submit', login)
 newuser.addEventListener('click', newuserCreate)
 logout.addEventListener('click', doLogout)
 
@@ -42,12 +45,20 @@ sessionCheck()
 
 function sessionCheck()
 {
+
     const p = Cookies.get('pass')
     if(p)
     {
         loginpass.value = p
         login()
     }
+    else
+    {
+        pre.classList.remove('disabled')
+    }
+
+    loading.classList.add('disabled')
+    loading.classList.remove('loading')
 }
 
 function doLogout()
@@ -56,8 +67,11 @@ function doLogout()
     location.reload()
 }
 
-function login()
+function login(event)
 {
+    loginerror.classList.add('hidden')
+    if (event != null) event.preventDefault()
+
     return fetch('login', 
     { 
         method: 'POST',
@@ -81,10 +95,10 @@ function login()
         }
         else if(response.status == 401)
         {
-            document.querySelector('body').innerHTML = 'Bad password'
+            loginerror.classList.remove('hidden')
         }
     })
-    .catch(error => document.querySelector('body').innerHTML = 'Bad password')
+    .catch(error => document.querySelector('body').innerHTML = 'Unknown error, please reload the page')
 
 }
 
