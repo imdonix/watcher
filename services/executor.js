@@ -3,7 +3,6 @@ const moment = require('moment')
 const { Item } = require('./db')
 
 const Jofogas = require('../srappers/jofogas');
-const Ingatlan = require('../srappers/ingatlan');
 const Auto = require('../srappers/auto');
 
 const { niceDate, dateOnly } = require('./time');
@@ -18,7 +17,6 @@ class Executor
     constructor()
     {
         const jofogas = new Jofogas()
-        const ingatlan = new Ingatlan()
         const auto = new Auto()
 
         this.scrappers = [jofogas, auto]
