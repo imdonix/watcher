@@ -1,12 +1,6 @@
 const moment = require('moment')
-
 const { Item } = require('./db')
-
-const Jofogas = require('../srappers/jofogas');
-const Auto = require('../srappers/auto');
-
-const { niceDate, dateOnly } = require('./time');
-const { range } = require('express/lib/request');
+const { niceDate } = require('./time');
 
 class Executor
 {
@@ -16,15 +10,13 @@ class Executor
 
     constructor()
     {
-        const jofogas = new Jofogas()
-        const auto = new Auto()
-
-        this.scrappers = [jofogas, auto]
-        this.cooldown = new Map()
-        this.cooldown[jofogas] = moment()
-        this.cooldown[auto] = moment()
+        const constructors = require('./scraper')
 
         this.queue = Array()
+        this.scrappers = constructors.map(Class => new Class())
+        this.cooldown = new Map()
+        
+        this.scrappers.forEach(engine => this.cooldown[engine] = 0)
 
         this.start()
         console.log(`[${niceDate()}] [Executor] Executor started |${this.scrappers.map(x => x.id()).join(' & ')}|`)

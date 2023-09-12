@@ -1,7 +1,5 @@
 const fetch = require('node-fetch')
 const { parse } = require('node-html-parser')
-const { cyrb53 } = require('../services/crypto')
-const Scraper = require("../services/scraper")
 
 
 const IDREG = /\/([0-9]+)_([0-9]+)t\.jpg/
@@ -83,52 +81,5 @@ function nextPage(root)
     }
 }
 
-class Auto extends Scraper
-{
-    id()
-    {
-        return 'hasznaltauto.hu'
-    }
 
-    async scrapPage(routine, page)
-    {
-        let settings = {
-            key: routine.key,
-        }
-
-        const result = await scrapHasznaltautoPage(settings, page)
-        //result.items.forEach(item => item.id = cyrb53(`${this.name}|${item.id}`)) // PostProcess item IDs
-
-        return result
-    }
-
-    getOptions()
-    {
-        return [
-            {
-                id : "keywords",
-                name : "Tag (name in the list)",
-                type : "text" 
-            },
-            {
-                id : "key",
-                name : "Do a manual search and insert the Key here www.hasznaltauto.hu/talalatilista/<KEY>",
-                type : "text" 
-            }
-        ]
-    }
-
-    getItemModel()
-    {
-        return [
-            "name",
-            "image",
-            "url",
-            "price",
-            "ad"
-        ]
-    }
-
-}
-
-module.exports = Auto
+module.exports = scrapHasznaltautoPage

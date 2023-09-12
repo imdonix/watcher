@@ -1,4 +1,4 @@
-const Auto = require('./srappers/auto')
+const Auto = require('./srappers/hasznaltauto.hu')
 
 
 async function main()

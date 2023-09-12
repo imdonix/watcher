@@ -1,7 +1,5 @@
 const fetch = require('node-fetch')
 const { parse } = require('node-html-parser')
-const { cyrb53 } = require('../services/crypto')
-const Scraper = require("../services/scraper")
 
 const CLIENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.72 Safari/537.36'
 const DOMAIN_NAME = "https://www.jofogas.hu/magyarorszag"
@@ -103,81 +101,4 @@ function nextPage(root)
 }
 
 
-class Jofogas extends Scraper
-{
-    id()
-    {      
-        return 'jofogas.hu'
-    }
-
-    async scrapPage(routine, page)
-    {
-
-        let settings = {
-            keywords: routine.keywords,
-            domain: routine.domain,
-            minPrice : routine.minPrice,
-            maxPrice : routine.maxPrice,
-            enableCompany : routine.enableCompany,
-            enablePost: routine.enablePost
-        }
-
-        const result = await scrapJofogasPage(settings, page)
-        result.items.forEach(item => item.id = cyrb53(`${this.name}|${item.id}`)) // PostProcess item IDs
-
-        return result
-    }
-
-    getOptions()
-    {
-        return [
-            {
-                id : "keywords",
-                name : "Keywords",
-                type : "text",
-            },
-            {
-                id : "domain",
-                name : "Platform URL",
-                type : "url",
-                default : `http://jofogas.hu/budapest`
-            },
-            {
-                id : "minPrice",
-                name : "Min price",
-                type : "number" 
-            },
-            {
-                id : "maxPrice",
-                name : "Max price",
-                type : "number" 
-            },
-            {
-                id : "enableCompany",
-                name : "Enable company ad",
-                type : "checkbox" 
-            },
-            {
-                id : "enablePost",
-                name : "Enable post service",
-                type : "checkbox" 
-            }
-        ]
-    }
-
-    getItemModel()
-    {
-        return [
-            "id", 
-            "name", 
-            "price", 
-            "url", 
-            "company", 
-            "post", 
-            "found"
-        ]
-    }
-
-}
-
-module.exports = Jofogas
+module.exports = scrapJofogasPage
