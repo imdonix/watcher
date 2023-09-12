@@ -15,7 +15,7 @@ class Executor
         this.queue = Array()
         this.scrappers = constructors.map(Class => new Class())
         this.cooldown = new Map()
-        
+
         this.scrappers.forEach(engine => this.cooldown[engine] = 0)
 
         this.start()
@@ -26,7 +26,7 @@ class Executor
     {
         while (true) 
         {
-            await new Promise(resolve => setTimeout(resolve, 1000))
+            await new Promise(resolve => setTimeout(resolve, 50))
             await this.execute()
         }
     }
@@ -73,6 +73,13 @@ class Executor
                         })
                     }
                     
+                    /* TODO: Add a beter solution here */
+                    if(result.page > 5)
+                    {
+                        console.log(`[${niceDate()}] |${next.owner}| <${next.page}> /${engine.id()}->${next.routine.keywords}/ -> hard limit page 5 reached `)    
+                        return 
+                    }
+
                     this.enqueue(next.owner, next.routine, result.page)
                     console.log(`[${niceDate()}] |${next.owner}| <${next.page}> /${engine.id()}->${next.routine.keywords}/ -> found ${result.items.length} `)    
                 }

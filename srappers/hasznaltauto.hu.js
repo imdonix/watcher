@@ -52,16 +52,16 @@ function processDomItem(item)
     return {
         id : IDREG.exec(item.querySelector('.img-responsive')?.attributes.src)[1],
         name :  item.querySelector('h3').firstChild.innerText,
-        image: item.querySelector('.img-responsive')?.attributes.src.replace('t.jpg', '.jpg'),
-        url: item.querySelector('.img-responsive')?.parentNode?.getAttribute('href'),
-        price: getPrice(item.querySelector('.pricefield-primary')?.innerText),
+        image: item.querySelector('.img-responsive').attributes.src.replace('t.jpg', '.jpg'),
+        url: item.querySelector('.img-responsive').parentNode?.getAttribute('href'),
+        price: getPrice(item.querySelector('.pricefield-primary')?.innerText || item.querySelector('.pricefield-primary-highlighted')?.innerText),
         ad: item.querySelector('.trader-name')?.innerText.indexOf('Magánszemély') == -1
-    }  
+    }
 }
 
 function getPrice(element)
 {
-    if(!element) return null
+    if(!element) throw new Error('Price could not be extracted')
 
     let trimmed = element.replace(/\s/g,'')
     return Number(trimmed.substring(0, trimmed.length - 2));

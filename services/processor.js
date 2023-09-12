@@ -123,6 +123,7 @@ class Processor
     {
         function numberWithCommas(x) 
         {
+            if(x == null) return 'unknown'
             return x.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, " ");
         }
 
