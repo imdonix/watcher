@@ -16,7 +16,7 @@ class Executor
         this.scrappers = constructors.map(Class => new Class())
         this.cooldown = new Map()
 
-        this.scrappers.forEach(engine => this.cooldown[engine] = 0)
+        this.scrappers.forEach(engine => this.cooldown[engine.id()] = moment())
 
         this.start()
         console.log(`[${niceDate()}] [Executor] Executor started |${this.scrappers.map(x => x.id()).join(' & ')}|`)
@@ -55,10 +55,10 @@ class Executor
             const engine = this.scrappers.find(scrapper => scrapper.id() == next.routine.engine)
             if(engine)
             {
-                if (this.cooldown[engine] < moment())
+                if (this.cooldown[engine.id()] < moment())
                 {
                     const result = await engine.scrapPage(next.routine, next.page)
-                    this.cooldown[engine] = moment().add(Math.max(5, Math.floor(Math.random() * 15)), 's')
+                    this.cooldown[engine.id()] = moment().add(Math.max(5, Math.floor(Math.random() * 15)), 's')
 
                     for(let found of result.items)
                     {
