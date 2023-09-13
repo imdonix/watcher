@@ -1,3 +1,7 @@
+/*
+Standalone scrapper for hasznaltauto.hu
+*/
+
 const fetch = require('node-fetch')
 const { parse } = require('node-html-parser')
 

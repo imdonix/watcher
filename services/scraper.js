@@ -1,3 +1,4 @@
+const { DataTypes } = require('sequelize');
 const { cyrb53 } = require('./crypto')
 
 const scrapJofogasPage = require('../srappers/jofogas.hu')
@@ -10,11 +11,21 @@ function abs()
 
 class Scraper
 {
-    id() { abs(); return '' }
+    id() { abs() }
 
-    getOptions() { abs(); return {} }
+    getOptions() { abs() }
 
-    async scrapPage(routine, page) { abs(); return {items : Array(), page : 0} }
+    getItemModel() { abs() }
+
+    async wrapScrapPage(routine, page) { abs() }
+
+
+    async scrapPage(routine, page) 
+    {
+        const result = await this.wrapScrapPage(routine, page)
+        result.items.forEach(item => item.id = cyrb53(`${this.name}|${item.id}`)) // PostProcess item IDs
+        return result
+    }
 }
 
 class JofogasHU extends Scraper
@@ -24,9 +35,8 @@ class JofogasHU extends Scraper
         return 'jofogas.hu'
     }
 
-    async scrapPage(routine, page)
+    async wrapScrapPage(routine, page)
     {
-
         let settings = {
             keywords: routine.keywords,
             domain: routine.domain,
@@ -36,10 +46,7 @@ class JofogasHU extends Scraper
             enablePost: routine.enablePost
         }
 
-        const result = await scrapJofogasPage(settings, page)
-        result.items.forEach(item => item.id = cyrb53(`${this.name}|${item.id}`)) // PostProcess item IDs
-
-        return result
+        return await scrapJofogasPage(settings, page)
     }
 
     getOptions()
@@ -81,15 +88,15 @@ class JofogasHU extends Scraper
 
     getItemModel()
     {
-        return [
-            "id", 
-            "name", 
-            "price", 
-            "url", 
-            "company", 
-            "post", 
-            "found"
-        ]
+        return {
+            id : DataTypes.NUMBER,
+            name : DataTypes.STRING,
+            price : DataTypes.NUMBER,
+            image : DataTypes.STRING,
+            url : DataTypes.STRING,
+            company : DataTypes.BOOLEAN,
+            post : DataTypes.BOOLEAN,
+        }
     }
 
 }
@@ -101,16 +108,13 @@ class HasznaltautoHU extends Scraper
         return 'hasznaltauto.hu'
     }
 
-    async scrapPage(routine, page)
+    async wrapScrapPage(routine, page)
     {
         let settings = {
             key: routine.key,
         }
 
-        const result = await scrapHasznaltautoPage(settings, page)
-        result.items.forEach(item => item.id = cyrb53(`${this.name}|${item.id}`)) // PostProcess item IDs
-
-        return result
+        return await scrapHasznaltautoPage(settings, page)
     }
 
     getOptions()
@@ -131,13 +135,14 @@ class HasznaltautoHU extends Scraper
 
     getItemModel()
     {
-        return [
-            "name",
-            "image",
-            "url",
-            "price",
-            "ad"
-        ]
+        return {
+            id : DataTypes.NUMBER,
+            name : DataTypes.STRING,
+            image : DataTypes.STRING,
+            url : DataTypes.STRING,
+            price : DataTypes.NUMBER,
+            ad : DataTypes.BOOLEAN,
+        }
     }
 
 }
