@@ -60,15 +60,13 @@ class Executor
                     const result = await engine.scrapPage(next.routine, next.page)
                     this.cooldown[engine.id()] = moment().add(Math.max(5, Math.floor(Math.random() * 15)), 's')
 
-                    for(let found of result.items)
+                    for(const found of result.items)
                     {
                         found.found = niceDate()
-                        await Item.create({
-                            id: found.id,
-                            sent: false,
-                            owner: next.owner,
-                            json: JSON.stringify(found)
-                        }, {
+                        found.owner = next.owner
+                        found.sent = false
+                        
+                        await Item.create(found, {
                             ignoreDuplicates: true
                         })
                     }

@@ -127,13 +127,9 @@ class Processor
             return x.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, " ");
         }
 
-        return items.map(item => {
-            let newItem = {...JSON.parse(item.json)}
-            newItem.price = numberWithCommas(newItem.price)
-            newItem.sent = item.sent
+        items.forEach(item => item.price = numberWithCommas(item.price))
 
-            return newItem
-        })
+        return items
     }
 }
 
