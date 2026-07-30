@@ -1,0 +1,23 @@
+{
+  "name": "@watcher/scraper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "echo 'scraper runs via bun'",
+    "postinstall": "playwright install chromium || true"
+  },
+  "dependencies": {
+    "@watcher/shared": "workspace:*",
+    "hono": "^4.7.2",
+    "playwright": "^1.50.1"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "latest",
+    "typescript": "^5.7.3"
+  }
+}

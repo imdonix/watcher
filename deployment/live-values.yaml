@@ -1,0 +1,29 @@
+# Example / live overrides for cluster deploy (watcher.donix.dev)
+images:
+  registry: "192.168.0.100:32500"
+  api: watcher-api
+  scraper: watcher-scraper
+  web: watcher-web
+  tag: "latest"
+  pullPolicy: Always
+
+ingress:
+  enabled: true
+  className: traefik
+  host: watcher.donix.dev
+  tls:
+    enabled: true
+    secretName: watcher-tls
+
+secret:
+  create: true
+  name: watcher
+  # Change me before first install
+  postgresPassword: "change-me-watcher-db"
+  # Leave empty to auto-generate + persist in DB; or pin a token here
+  apiToken: ""
+  vapidSubject: "mailto:watcher@donix.dev"
+
+api:
+  scrapIntervalMinutes: 5
+  notifyHour: 8

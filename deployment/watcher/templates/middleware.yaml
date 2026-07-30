@@ -1,0 +1,13 @@
+{{- if .Values.ingress.enabled }}
+# Strip /api so the API receives /auth/login not /api/auth/login
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "watcher.fullname" . }}-strip-api
+  labels:
+    {{- include "watcher.labels" . | nindent 4 }}
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+{{- end }}

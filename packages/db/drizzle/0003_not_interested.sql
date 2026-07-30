@@ -1,0 +1,2 @@
+ALTER TABLE "listings" ADD COLUMN IF NOT EXISTS "not_interested" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "listings" ADD COLUMN IF NOT EXISTS "not_interested_at" timestamp with time zone;

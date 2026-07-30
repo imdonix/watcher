@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "watcher.scraper.fullname" . }}
+  labels:
+    {{- include "watcher.labels" . | nindent 4 }}
+    {{- include "watcher.scraper.selectorLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.scraper.port }}
+      targetPort: http
+  selector:
+    {{- include "watcher.scraper.selectorLabels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "watcher.scraper.fullname" . }}
+  labels:
+    {{- include "watcher.labels" . | nindent 4 }}
+    {{- include "watcher.scraper.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.scraper.replicas }}
+  selector:
+    matchLabels:
+      {{- include "watcher.scraper.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watcher.scraper.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: scraper
+          image: {{ include "watcher.scraper.image" . | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.scraper.port }}
+          env:
+            - name: SCRAPER_PORT
+              value: {{ .Values.scraper.port | quote }}
+            - name: HEADLESS
+              value: {{ .Values.scraper.headless | quote }}
+            - name: SCRAPER_MAX_CONCURRENCY
+              value: {{ .Values.scraper.maxConcurrency | quote }}
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.scraper.resources | nindent 12 }}
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.scraper.shmSize | quote }}
