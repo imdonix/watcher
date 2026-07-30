@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { desc, sql } from "drizzle-orm";
 import { scrapeRuns, type Database } from "@watcher/db";
 import { requireAuth, type AuthEnv } from "../middleware/auth";
-import { getEngines, getSchedulerStatus, scrapAll } from "../services/processor";
+import { getEngines, getSchedulerStatus, startScrapAll } from "../services/processor";
 import { notifyAll, transportsStatus } from "../services/notify";
 import { scraperHealth } from "../services/scraper-client";
 import { countSubscriptions, isPushConfigured } from "../services/push";
@@ -82,14 +82,30 @@ export function jobRoutes(db: Database) {
     });
   });
 
+  /** Start a scrape asynchronously — does not wait for completion. */
   app.post("/scrap", requireAuth, async (c) => {
-    log("API", "Force Scrap");
-    try {
-      const result = await scrapAll(db);
-      return c.json({ ok: true, ...result });
-    } catch (err) {
-      return c.json({ error: String(err) }, 500);
+    log("API", "Force Scrap (async start)");
+    const result = startScrapAll(db);
+    if (result.alreadyRunning) {
+      return c.json(
+        {
+          ok: true,
+          started: false,
+          alreadyRunning: true,
+          message: "Scrape already in progress",
+        },
+        202,
+      );
     }
+    return c.json(
+      {
+        ok: true,
+        started: true,
+        alreadyRunning: false,
+        message: "Scrape started",
+      },
+      202,
+    );
   });
 
   app.post("/notify", requireAuth, async (c) => {

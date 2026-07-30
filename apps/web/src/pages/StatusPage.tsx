@@ -1,69 +1,124 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   CheckCircle2,
   Clock,
-  RefreshCw,
   XCircle,
 } from "lucide-react";
-import { toast } from "sonner";
 import type { StatusResponse } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageLoader } from "@/components/Spinner";
 import { cn } from "@/lib/utils";
 
+/** Base poll interval; faster while a scrape is running. */
+const POLL_IDLE_MS = 5_000;
+const POLL_ACTIVE_MS = 2_000;
+
 export function StatusPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastPolledAt, setLastPolledAt] = useState<Date | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const inFlight = useRef(false);
+  const scrapeActive = Boolean(status?.scheduler.scrapeInProgress);
 
-  const load = useCallback(async (soft = false) => {
-    if (soft) setRefreshing(true);
+  const load = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     try {
-      setStatus(await api.status());
+      const next = await api.status();
+      setStatus(next);
+      setError(null);
+      setLastPolledAt(new Date());
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load status");
+      setError(err instanceof Error ? err.message : "Failed to load status");
     } finally {
       setLoading(false);
-      setRefreshing(false);
+      inFlight.current = false;
     }
   }, []);
 
+  // Initial load + adaptive polling
   useEffect(() => {
     void load();
-    const t = setInterval(() => void load(true), 15_000);
+  }, [load]);
+
+  useEffect(() => {
+    const ms = scrapeActive ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+    const t = setInterval(() => void load(), ms);
     return () => clearInterval(t);
+  }, [load, scrapeActive]);
+
+  // Tick relative timestamps every 15s without refetch
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Refresh when tab becomes visible again
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [load]);
 
   if (loading && !status) return <PageLoader />;
 
   if (!status) {
-    return <p className="text-muted-foreground">Status unavailable.</p>;
+    return (
+      <p className="text-muted-foreground">
+        {error ?? "Status unavailable."}
+      </p>
+    );
   }
 
   const successRuns = status.runs.filter((r) => r.status === "done").length;
   const failedRuns = status.runs.filter((r) => r.status === "error").length;
   const running = status.runs.filter((r) => r.status === "running").length;
+  const pollLabel = scrapeActive
+    ? "Live · every 2s while scraping"
+    : "Live · updates every 5s";
+
+  // re-render relative times when `now` ticks
+  void now;
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">Services, schedule, recent runs</p>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-10 w-10 rounded-xl"
-          onClick={() => void load(true)}
-          disabled={refreshing}
-          aria-label="Refresh status"
-        >
-          <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-        </Button>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span
+            className={cn(
+              "inline-flex h-2 w-2 rounded-full",
+              error
+                ? "bg-destructive"
+                : scrapeActive
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-emerald-500",
+            )}
+            aria-hidden
+          />
+          <span>{error ? "Poll failed — retrying" : pollLabel}</span>
+          {lastPolledAt && !error && (
+            <span className="hidden tabular-nums text-muted-foreground/80 sm:inline">
+              · {formatRelative(lastPolledAt.toISOString())}
+            </span>
+          )}
+        </div>
       </div>
+
+      {status.scheduler.scrapeInProgress && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-100">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+          Scrape in progress…
+        </div>
+      )}
 
       {/* Service health — compact chips */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -164,7 +219,7 @@ export function StatusPage() {
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Recent runs</CardTitle>
-          <CardDescription>Newest first</CardDescription>
+          <CardDescription>Newest first · auto-refreshed</CardDescription>
         </CardHeader>
         <CardContent className="space-y-0 p-0">
           {status.runs.length === 0 ? (

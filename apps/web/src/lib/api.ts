@@ -95,7 +95,12 @@ export const api = {
   },
 
   scrap() {
-    return request<{ ok: boolean; found: number }>("/scrap", { method: "POST" });
+    return request<{
+      ok: boolean;
+      started: boolean;
+      alreadyRunning: boolean;
+      message?: string;
+    }>("/scrap", { method: "POST" });
   },
 
   notify() {

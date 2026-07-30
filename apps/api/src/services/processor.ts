@@ -169,6 +169,32 @@ async function notifyScrapeDone(db: Database, scrapeStatus: string): Promise<voi
   }
 }
 
+/** True while a scrape job is running (scheduler or manual). */
+export function isScraping(): boolean {
+  return scraping;
+}
+
+/**
+ * Kick off a full scrape in the background and return immediately.
+ * Use from HTTP handlers so the client is not blocked for the whole run.
+ */
+export function startScrapAll(db: Database): {
+  started: boolean;
+  alreadyRunning: boolean;
+} {
+  if (scraping) {
+    log("Processor", "scrape already running — not starting another");
+    return { started: false, alreadyRunning: true };
+  }
+
+  log("Processor", "starting scrape in background");
+  void scrapAll(db).catch((err) => {
+    logError("Processor", `background scrape failed: ${err}`);
+  });
+
+  return { started: true, alreadyRunning: false };
+}
+
 export async function scrapAll(db: Database): Promise<{ found: number; runId: number }> {
   if (scraping) {
     log("Processor", "scrape already running, skip");
