@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-background: oklch(0.975 0.004 250);
+  --color-foreground: oklch(0.2 0.02 260);
+  --color-card: oklch(1 0 0);
+  --color-card-foreground: oklch(0.2 0.02 260);
+  --color-popover: oklch(1 0 0);
+  --color-popover-foreground: oklch(0.2 0.02 260);
+  --color-primary: oklch(0.47 0.13 255);
+  --color-primary-foreground: oklch(0.99 0 0);
+  --color-secondary: oklch(0.945 0.012 255);
+  --color-secondary-foreground: oklch(0.32 0.04 255);
+  --color-muted: oklch(0.955 0.006 255);
+  --color-muted-foreground: oklch(0.48 0.02 260);
+  --color-accent: oklch(0.945 0.02 220);
+  --color-accent-foreground: oklch(0.28 0.04 220);
+  --color-destructive: oklch(0.55 0.2 25);
+  --color-destructive-foreground: oklch(0.99 0 0);
+  --color-border: oklch(0.9 0.008 255);
+  --color-input: oklch(0.9 0.008 255);
+  --color-ring: oklch(0.47 0.13 255);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased min-h-dvh;
+    background-image: radial-gradient(
+      ellipse 90% 50% at 50% -30%,
+      oklch(0.88 0.05 255 / 0.4),
+      transparent 70%
+    );
+  }
+
+  @media (pointer: coarse) {
+    button,
+    a,
+    [role="button"] {
+      touch-action: manipulation;
+    }
+  }
+
+  /* Sonner toasts: keep clear of bottom nav on phones */
+  @media (max-width: 639px) {
+    [data-sonner-toaster] {
+      --offset: calc(4.25rem + env(safe-area-inset-bottom, 0px)) !important;
+    }
+  }
+}
+
+/* Lightweight enter/leave helpers used by list cards */
+@keyframes listing-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-listing-in {
+  animation: listing-in 0.2s ease-out both;
+}

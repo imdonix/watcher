@@ -1,0 +1,21 @@
+Watcher deployed.
+
+  URL:  {{ include "watcher.publicUrl" . }}
+  Host: {{ .Values.ingress.host }}
+
+Images:
+  api:     {{ include "watcher.api.image" . }}
+  scraper: {{ include "watcher.scraper.image" . }}
+  web:     {{ include "watcher.web.image" . }}
+
+API token:
+  - If secret.apiToken is empty, the API generates one on first boot and stores it
+    in Postgres settings.api_token. Read logs:
+      kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "watcher.api.fullname" . }} | grep API_TOKEN
+
+Push images:
+  ./deployment/_push.sh {{ .Values.images.tag }}
+
+Upgrade with a new tag:
+  helm upgrade {{ .Release.Name }} ./deployment/watcher -n {{ .Release.Namespace }} \
+    --set images.tag=<new-tag>

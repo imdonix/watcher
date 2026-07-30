@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "watcher.api.fullname" . }}
+  labels:
+    {{- include "watcher.labels" . | nindent 4 }}
+    {{- include "watcher.api.selectorLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.api.port }}
+      targetPort: http
+  selector:
+    {{- include "watcher.api.selectorLabels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "watcher.api.fullname" . }}
+  labels:
+    {{- include "watcher.labels" . | nindent 4 }}
+    {{- include "watcher.api.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      {{- include "watcher.api.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watcher.api.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.postgresql.enabled }}
+      initContainers:
+        - name: wait-for-postgresql
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until pg_isready -h {{ include "watcher.postgresql.fullname" . }} -p 5432 -U {{ .Values.postgresql.user }}; do
+                echo "waiting for postgresql"
+                sleep 2
+              done
+        - name: wait-for-scraper
+          image: curlimages/curl:8.5.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until curl -sf "http://{{ include "watcher.scraper.fullname" . }}:{{ .Values.scraper.port }}/health"; do
+                echo "waiting for scraper"
+                sleep 3
+              done
+      {{- end }}
+      containers:
+        - name: api
+          image: {{ include "watcher.api.image" . | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.api.port }}
+          env:
+            - name: API_PORT
+              value: {{ .Values.api.port | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watcher.secretName" . }}
+                  key: database-url
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watcher.secretName" . }}
+                  key: api-token
+                  optional: true
+            - name: SCRAPER_URL
+              value: {{ printf "http://%s:%v" (include "watcher.scraper.fullname" .) .Values.scraper.port | quote }}
+            - name: SCRAP_INTERVAL_MINUTES
+              value: {{ .Values.api.scrapIntervalMinutes | quote }}
+            - name: NOTIFY_HOUR
+              value: {{ .Values.api.notifyHour | quote }}
+            - name: CORS_ORIGIN
+              value: {{ include "watcher.publicUrl" . | quote }}
+            - name: VAPID_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watcher.secretName" . }}
+                  key: vapid-public-key
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watcher.secretName" . }}
+                  key: vapid-private-key
+            - name: VAPID_SUBJECT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "watcher.secretName" . }}
+                  key: vapid-subject
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 25
+            periodSeconds: 15
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}

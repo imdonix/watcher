@@ -1,0 +1,82 @@
+images:
+  registry: "192.168.0.100:32500"
+  api: watcher-api
+  scraper: watcher-scraper
+  web: watcher-web
+  tag: "latest"
+  pullPolicy: Always
+
+# Traefik ingress on k3s — public host
+ingress:
+  enabled: true
+  className: traefik
+  host: watcher.donix.dev
+  # Optional path annotations (leave empty for defaults)
+  annotations: {}
+  tls:
+    enabled: true
+    # cert-manager / Traefik TLS secret for watcher.donix.dev
+    secretName: watcher-tls
+
+# Optional override for CORS / push origin (defaults to https://{{ ingress.host }})
+publicUrl: ""
+
+postgresql:
+  enabled: true
+  user: watcher
+  database: watcher
+  storage: 5Gi
+  # password comes from secret key postgres-password
+
+# Create a K8s Secret from values below (set create: false to use an existing secret)
+secret:
+  create: true
+  name: watcher
+  # Change these for real deploys (or create the secret yourself)
+  postgresPassword: "change-me-watcher-db"
+  # Empty = API generates once and stores in settings.api_token
+  apiToken: ""
+  vapidPublicKey: "BBYrfVsKv1tXaJZhF693BxVf6LkrgfaNvA8PmBYPvRhHJ9sQzyOoe6mQses823tHcPhuAd67Cy80vrqgNeJ-KgM"
+  vapidPrivateKey: "Ifk6LEVJHQEKUycZdKJNSgLAjSDFzeQ9T6DQiu4KsGk"
+  vapidSubject: "mailto:watcher@donix.dev"
+
+api:
+  replicas: 1
+  port: 3000
+  scrapIntervalMinutes: 5
+  notifyHour: 8
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+scraper:
+  replicas: 1
+  port: 3001
+  headless: true
+  maxConcurrency: 2
+  # Chromium needs /dev/shm
+  shmSize: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+web:
+  replicas: 1
+  port: 80
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+storageClass: ""

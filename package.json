@@ -1,23 +1,24 @@
 {
   "name": "watcher",
-  "version": "0.2",
-  "description": "A fullstack node.js application which help you find good deals",
-  "main": "app.js",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deal watcher monorepo — scrape jofogas, ingatlan, hasznaltauto and get notified",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "start": "node app.js"
+    "dev": "bun run --filter '@watcher/*' dev",
+    "dev:api": "bun run --filter @watcher/api dev",
+    "dev:web": "bun run --filter @watcher/web dev",
+    "dev:scraper": "bun run --filter @watcher/scraper dev",
+    "build": "bun run --filter '@watcher/*' build",
+    "db:generate": "bun run --filter @watcher/db generate",
+    "db:migrate": "bun run --filter @watcher/db migrate",
+    "db:push": "bun run --filter @watcher/db push",
+    "db:studio": "bun run --filter @watcher/db studio",
+    "typecheck": "bun run --filter '@watcher/*' typecheck"
   },
   "author": "donix",
-  "license": "ISC",
-  "dependencies": {
-    "ejs": "^3.1.5",
-    "encoding": "^0.1.13",
-    "express": "^4.17.1",
-    "minimist": "^1.2.8",
-    "node-fetch": "^2.6.1",
-    "node-html-parser": "^3.1.3",
-    "node-schedule": "^1.3.2",
-    "nodemailer": "^6.9.4",
-    "sequelize": "^6.32.1",
-    "sqlite3": "^5.1.6"
-  }
+  "license": "ISC"
 }

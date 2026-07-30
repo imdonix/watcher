@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "watcher.web.fullname" . }}
+  labels:
+    {{- include "watcher.labels" . | nindent 4 }}
+    {{- include "watcher.web.selectorLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.web.port }}
+      targetPort: http
+  selector:
+    {{- include "watcher.web.selectorLabels" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "watcher.web.fullname" . }}
+  labels:
+    {{- include "watcher.labels" . | nindent 4 }}
+    {{- include "watcher.web.selectorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "watcher.web.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "watcher.web.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: web
+          image: {{ include "watcher.web.image" . | quote }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.web.port }}
+          env:
+            # nginx template → proxy /api to the API Service
+            - name: API_UPSTREAM
+              value: {{ printf "%s:%v" (include "watcher.api.fullname" .) .Values.api.port | quote }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
