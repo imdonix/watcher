@@ -174,7 +174,7 @@ export const ENGINES: EngineMeta[] = [
         type: "number",
         placeholder: "30000000",
         description:
-          "Full HUF. Eladó → mFt path (e.g. 30000000 → 30-mFt-tol). Kiadó → monthly rent as ezer-Ft (e.g. 150000 → 150-ezer-Ft-tol).",
+          "Full HUF. Eladó → mFt (e.g. 30000000 → 30-mFt-tol). Kiadó → monthly rent (e.g. 120000 → havi-120-ezer-Ft-tol).",
       },
       {
         id: "maxPrice",
@@ -182,7 +182,7 @@ export const ENGINES: EngineMeta[] = [
         type: "number",
         placeholder: "60000000",
         description:
-          "Full HUF. Eladó → mFt (e.g. 60000000 → 60-mFt-ig). Kiadó → monthly rent (e.g. 250000 → 250-ezer-Ft-ig).",
+          "Full HUF. Eladó → mFt (e.g. 60000000 → 60-mFt-ig). Kiadó → monthly rent (e.g. 180000 → havi-180-ezer-Ft-ig).",
       },
       {
         id: "condition",
@@ -300,56 +300,64 @@ function readPriceHuf(
   return null;
 }
 
-function pushPriceSegments(
-  parts: string[],
-  listingType: string,
-  minHuf: number | null,
-  maxHuf: number | null,
-) {
-  const isRent = listingType === "kiado";
+/**
+ * Rent price path segment as used by the live site, e.g.:
+ *   havi-120-180-ezer-Ft
+ *   havi-150-ezer-Ft-ig
+ *   havi-100-ezer-Ft-tol
+ */
+function rentPriceSegment(minHuf: number | null, maxHuf: number | null): string | null {
+  const minE = minHuf != null ? hufToEzerFtSegment(minHuf) : null;
+  const maxE = maxHuf != null ? hufToEzerFtSegment(maxHuf) : null;
+  if (minE != null && maxE != null) return `havi-${minE}-${maxE}-ezer-Ft`;
+  if (minE != null) return `havi-${minE}-ezer-Ft-tol`;
+  if (maxE != null) return `havi-${maxE}-ezer-Ft-ig`;
+  return null;
+}
 
-  if (isRent) {
-    // Monthly rent → ezer-Ft path segments (e.g. 150-ezer-Ft-ig)
-    const minE = minHuf != null ? hufToEzerFtSegment(minHuf) : null;
-    const maxE = maxHuf != null ? hufToEzerFtSegment(maxHuf) : null;
-    if (minE != null && maxE != null) {
-      parts.push(`${minE}-${maxE}-ezer-Ft`);
-    } else {
-      if (minE != null) parts.push(`${minE}-ezer-Ft-tol`);
-      if (maxE != null) parts.push(`${maxE}-ezer-Ft-ig`);
-    }
-    return;
-  }
-
-  // Sale → million-Ft path segments
+function salePriceSegment(minHuf: number | null, maxHuf: number | null): string | null {
   const minM = minHuf != null ? hufToMFtSegment(minHuf) : null;
   const maxM = maxHuf != null ? hufToMFtSegment(maxHuf) : null;
-  if (minM != null && maxM != null) {
-    parts.push(`${minM}-${maxM}-mFt`);
-  } else {
-    if (minM != null) parts.push(`${minM}-mFt-tol`);
-    if (maxM != null) parts.push(`${maxM}-mFt-ig`);
-  }
+  if (minM != null && maxM != null) return `${minM}-${maxM}-mFt`;
+  if (minM != null) return `${minM}-mFt-tol`;
+  if (maxM != null) return `${maxM}-mFt-ig`;
+  return null;
 }
 
 /**
  * Build ingatlan.com path segments from structured routine fields.
  * If `search` is provided, it wins (advanced override).
  *
- * Price encoding depends on listing type:
- * - elado (sale): full HUF → mFt segments
- * - kiado (rent): full HUF monthly rent → ezer-Ft segments
+ * Live site order (from listingsPageEvent) for rent:
+ *   kiado+lakas+havi-120-180-ezer-Ft+szeged
+ * Sale typically:
+ *   elado+lakas+budapest+…+50-mFt-ig
  */
 export function buildIngatlanSearchPath(routine: Record<string, unknown>): string {
   const advanced = String(routine.search ?? "").trim();
   if (advanced) {
-    return advanced.replace(/^\/+|\/+$/g, "").replace(/^lista\/|^szukites\//, "");
+    return advanced
+      .replace(/^\/+|\/+$/g, "")
+      .replace(/^lista\/|^szukites\//, "")
+      // fix older previews that omitted havi- for rent price ranges
+      .replace(/(^|\+)(\d+-\d+-ezer-Ft)(?=\+|$)/g, "$1havi-$2")
+      .replace(/(^|\+)(\d+-ezer-Ft-(?:tol|ig))(?=\+|$)/g, "$1havi-$2");
   }
 
   const parts: string[] = [];
   const listingType = String(routine.listingType || "elado");
   const propertyType = String(routine.propertyType || "lakas");
   parts.push(listingType, propertyType);
+
+  const isRent = listingType === "kiado";
+  const minHuf = readPriceHuf(routine, "minPrice", "minPriceMFt", isRent);
+  const maxHuf = readPriceHuf(routine, "maxPrice", "maxPriceMFt", isRent);
+
+  // Rent: price filter comes before location (site canonical order)
+  if (isRent) {
+    const rentSeg = rentPriceSegment(minHuf, maxHuf);
+    if (rentSeg) parts.push(rentSeg);
+  }
 
   const location = String(routine.location || "").trim();
   if (location) {
@@ -370,10 +378,11 @@ export function buildIngatlanSearchPath(routine: Record<string, unknown>): strin
     if (maxArea != null && Number.isFinite(maxArea)) parts.push(`${Math.floor(maxArea)}-m2-ig`);
   }
 
-  const isRent = listingType === "kiado";
-  const minHuf = readPriceHuf(routine, "minPrice", "minPriceMFt", isRent);
-  const maxHuf = readPriceHuf(routine, "maxPrice", "maxPriceMFt", isRent);
-  pushPriceSegments(parts, listingType, minHuf, maxHuf);
+  // Sale: price after location / rooms / area
+  if (!isRent) {
+    const saleSeg = salePriceSegment(minHuf, maxHuf);
+    if (saleSeg) parts.push(saleSeg);
+  }
 
   const condition = String(routine.condition || "").trim();
   if (condition) parts.push(condition);

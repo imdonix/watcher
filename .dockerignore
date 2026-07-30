@@ -1,0 +1,34 @@
+# Keep build context small and free of host install artifacts
+.git
+.gitignore
+.gitattributes
+**/.DS_Store
+
+# Host dependencies / caches (image runs its own bun install)
+**/node_modules
+**/.bun
+**/.cache
+
+# Build outputs
+**/dist
+**/build
+**/*.tsbuildinfo
+apps/web/dist
+
+# Local / deploy noise not needed in images
+deployment
+docker-compose.yml
+README.md
+**/*.md
+!packages/**/README.md
+
+# Tests & Playwright host cache
+coverage
+playwright-report
+test-results
+pgdata
+data
+logs
+*.log
+.env
+.env.*

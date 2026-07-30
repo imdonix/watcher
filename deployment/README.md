@@ -12,7 +12,7 @@ Dockerfiles live under `docker/` (monorepo root build context).
 | `watcher-scraper` | `docker/scraper.Dockerfile` |
 | `watcher-web` | `docker/web.Dockerfile` |
 
-Each image runs `docker/link-workspace-modules.sh` so every workspace package’s `node_modules` points at the root install (Bun resolves deps next to each package).
+Images use a multi-stage “manifests only” install (`bun install --filter … --linker=hoisted`) so dependency layers stay cached without listing every `package.json` by hand, and only the target app’s workspace graph is installed.
 
 Build & push (from repo root):
 

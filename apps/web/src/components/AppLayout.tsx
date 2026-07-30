@@ -74,12 +74,17 @@ export function AppLayout() {
     setScraping(true);
     try {
       const res = await api.scrap();
-      toast.success(
-        res.found > 0 ? `Found ${res.found} new listing${res.found === 1 ? "" : "s"}` : "Scrape finished — nothing new",
-      );
+      if (res.alreadyRunning) {
+        toast.message("Scrape already running");
+      } else if (res.started) {
+        toast.success("Scrape started — check Status for progress");
+      } else {
+        toast.message(res.message ?? "Scrape requested");
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Scrape failed");
+      toast.error(err instanceof Error ? err.message : "Failed to start scrape");
     } finally {
+      // Button only reflects request in flight, not full scrape duration
       setScraping(false);
     }
   }
