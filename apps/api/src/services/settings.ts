@@ -1,11 +1,18 @@
 import { eq } from "drizzle-orm";
 import { settings, type Database } from "@watcher/db";
+import { env } from "../env";
+import { log } from "../lib/time";
 
 export type SettingType = "string" | "number" | "boolean" | "json";
 
 export const SETTING_KEYS = {
   apiToken: "api_token",
+  scrapIntervalMinutes: "scrap_interval_minutes",
 } as const;
+
+/** Allowed scrape interval range (minutes). */
+export const SCRAP_INTERVAL_MIN = 1;
+export const SCRAP_INTERVAL_MAX = 24 * 60; // 1 day
 
 export async function getSetting(
   db: Database,
@@ -43,4 +50,33 @@ export async function setSetting(
 export async function getStringSetting(db: Database, key: string): Promise<string | null> {
   const row = await getSetting(db, key);
   return row?.value ?? null;
+}
+
+export async function getNumberSetting(db: Database, key: string): Promise<number | null> {
+  const row = await getSetting(db, key);
+  if (!row) return null;
+  const n = Number(row.value);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function clampScrapIntervalMinutes(raw: number): number {
+  return Math.min(SCRAP_INTERVAL_MAX, Math.max(SCRAP_INTERVAL_MIN, Math.floor(raw)));
+}
+
+/**
+ * Load runtime settings from DB after migrations.
+ * Prefer persisted values; seed defaults from env when missing.
+ */
+export async function loadRuntimeSettings(db: Database): Promise<void> {
+  const stored = await getNumberSetting(db, SETTING_KEYS.scrapIntervalMinutes);
+  if (stored != null && stored >= SCRAP_INTERVAL_MIN) {
+    env.scrapIntervalMinutes = clampScrapIntervalMinutes(stored);
+    log("Settings", `scrap interval ${env.scrapIntervalMinutes}m (from settings table)`);
+    return;
+  }
+
+  const seed = clampScrapIntervalMinutes(env.scrapIntervalMinutes);
+  env.scrapIntervalMinutes = seed;
+  await setSetting(db, SETTING_KEYS.scrapIntervalMinutes, "number", String(seed));
+  log("Settings", `scrap interval ${seed}m (seeded from env/default)`);
 }

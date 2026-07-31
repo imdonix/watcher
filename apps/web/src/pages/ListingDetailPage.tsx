@@ -9,7 +9,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { ListingDetailResponse } from "@watcher/shared";
+import type { ListingDetailResponse, ListingItemDetails } from "@watcher/shared";
 import { formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { formatDateTime, formatEngine, formatRelative } from "@/lib/format";
@@ -147,6 +147,24 @@ export function ListingDetailPage() {
   }
 
   const unavailable = listing.status === "missing" || Boolean(listing.notInterested);
+  const details = (listing.details ?? null) as ListingItemDetails | null;
+  const detailError =
+    details && typeof (details as { error?: unknown }).error === "string"
+      ? String((details as { error: string }).error)
+      : null;
+  const hasRealDetails =
+    Boolean(details) &&
+    !detailError &&
+    Boolean(
+      details?.description ||
+        (details?.images && details.images.length > 0) ||
+        (details?.attributes && Object.keys(details.attributes).length > 0),
+    );
+  const gallery = details?.images?.length
+    ? details.images
+    : listing.image
+      ? [String(listing.image)]
+      : [];
 
   return (
     <div className="space-y-5">
@@ -159,10 +177,10 @@ export function ListingDetailPage() {
 
       {/* Hero card */}
       <Card className={cn("overflow-hidden border-border/80 shadow-sm", unavailable && "opacity-95")}>
-        {listing.image && (
+        {gallery[0] && (
           <div className="aspect-[16/10] max-h-64 overflow-hidden bg-muted sm:aspect-[2.4/1] sm:max-h-72">
             <img
-              src={String(listing.image)}
+              src={gallery[0]}
               alt=""
               className="h-full w-full object-cover"
             />
@@ -189,6 +207,9 @@ export function ListingDetailPage() {
                   {formatEngine(listing.engineSlug)}
                 </Badge>
               )}
+              {!listing.detailsScrapedAt && (
+                <Badge variant="secondary">Details pending</Badge>
+              )}
             </div>
           </div>
 
@@ -196,6 +217,9 @@ export function ListingDetailPage() {
             First seen {formatRelative(listing.firstSeenAt)} · Last seen{" "}
             {formatRelative(listing.lastSeenAt)} · {data.sightings.length} observation
             {data.sightings.length === 1 ? "" : "s"}
+            {listing.detailsScrapedAt
+              ? ` · details ${formatRelative(listing.detailsScrapedAt)}`
+              : ""}
           </CardDescription>
 
           {listing.notInterested && (
@@ -236,6 +260,78 @@ export function ListingDetailPage() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         <div className="space-y-4">
+          {(hasRealDetails || detailError || !listing.detailsScrapedAt) && (
+            <Card className="border-border/80 shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Listing details</CardTitle>
+                <CardDescription>
+                  Scraped once from the item page
+                  {listing.engineSlug ? ` (${formatEngine(listing.engineSlug)})` : ""}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!listing.detailsScrapedAt && (
+                  <p className="text-sm text-muted-foreground">
+                    Detail page not scraped yet — runs as a special job after list scrapes.
+                  </p>
+                )}
+                {detailError && (
+                  <p className="text-sm text-destructive">Detail scrape failed: {detailError}</p>
+                )}
+                {hasRealDetails && details?.description && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Description
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                      {details.description}
+                    </p>
+                  </div>
+                )}
+                {hasRealDetails &&
+                  details?.attributes &&
+                  Object.keys(details.attributes).length > 0 && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Attributes
+                      </p>
+                      <dl className="divide-y divide-border/60 rounded-xl border border-border/70">
+                        {Object.entries(details.attributes).map(([key, value]) => (
+                          <div
+                            key={key}
+                            className="flex items-start justify-between gap-4 px-3 py-2 text-sm"
+                          >
+                            <dt className="shrink-0 text-muted-foreground">{key}</dt>
+                            <dd className="text-right font-medium">{String(value ?? "—")}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </div>
+                  )}
+                {gallery.length > 1 && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Photos
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {gallery.slice(0, 8).map((src) => (
+                        <a
+                          key={src}
+                          href={src}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="aspect-square overflow-hidden rounded-lg border border-border/60 bg-muted"
+                        >
+                          <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="border-border/80 shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="flex flex-wrap items-center gap-2 text-base">

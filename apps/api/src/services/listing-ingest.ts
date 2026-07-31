@@ -30,10 +30,28 @@ function priceOf(item: ScrapedItem): number | null {
   return Number.isFinite(n) ? Math.floor(n) : null;
 }
 
+/** True when scraped fields differ from the last stored listing snapshot. */
+function listingChanged(
+  row: typeof listings.$inferSelect,
+  next: {
+    price: number | null;
+    name: string;
+    url: string;
+    imageUrl: string | null;
+  },
+): boolean {
+  if (next.price !== row.lastPrice) return true;
+  if (next.name !== row.name) return true;
+  if (next.url !== row.url) return true;
+  // Scrapers sometimes omit image; only treat an explicit new URL as a change
+  if (next.imageUrl != null && next.imageUrl !== row.imageUrl) return true;
+  return false;
+}
+
 /**
  * Persist scrape results for one routine:
- * - Upsert permanent listing rows
- * - Insert a sighting for every observation
+ * - Upsert permanent listing rows (always refresh lastSeenAt when observed)
+ * - Insert a sighting only on first see or when listing content changed
  * - Emit first_seen / price_change / reappeared events
  * - Only if scrape is complete: mark previously seen active items as missing
  */
@@ -64,6 +82,8 @@ export async function ingestRoutineScrape(
     const existing = await db.select().from(listings).where(eq(listings.id, id)).limit(1);
     const row = existing[0];
 
+    let shouldRecordSighting = false;
+
     if (!row) {
       await db.insert(listings).values({
         id,
@@ -90,20 +110,27 @@ export async function ingestRoutineScrape(
         createdAt: now,
       });
       eventsCreated++;
+      shouldRecordSighting = true;
     } else {
+      const contentChanged = listingChanged(row, { price, name, url, imageUrl });
       const priceChanged =
         price != null && row.lastPrice != null && price !== row.lastPrice;
 
+      // Always bump presence; only refresh content fields when they changed
+      // (avoids rewriting identical jsonb every scrape)
       const updates: Partial<typeof listings.$inferInsert> = {
-        url,
-        name,
-        imageUrl: imageUrl ?? row.imageUrl,
         lastSeenAt: now,
-        lastPrice: price,
-        lastData: data,
         updatedAt: now,
         status: "active",
       };
+
+      if (contentChanged) {
+        updates.url = url;
+        updates.name = name;
+        updates.imageUrl = imageUrl ?? row.imageUrl;
+        updates.lastPrice = price;
+        updates.lastData = data;
+      }
 
       // Price change re-opens interest (same listing, "new" deal to the user)
       if (priceChanged && row.notInterested) {
@@ -120,7 +147,8 @@ export async function ingestRoutineScrape(
           kind: "reappeared",
           oldPrice: row.lastPrice,
           newPrice: price,
-          notified: false,
+          // Push only for first_seen — reappear is tracked but silent
+          notified: true,
           createdAt: now,
         });
         eventsCreated++;
@@ -132,25 +160,30 @@ export async function ingestRoutineScrape(
           kind: "price_change",
           oldPrice: row.lastPrice,
           newPrice: price,
-          // If user had dismissed, a price change is worth notifying again
-          notified: false,
+          // Push only for first_seen
+          notified: true,
           createdAt: now,
         });
         eventsCreated++;
       }
 
       await db.update(listings).set(updates).where(eq(listings.id, id));
+
+      // Sightings are a change log / price history — skip identical re-observations
+      shouldRecordSighting = contentChanged;
     }
 
-    await db.insert(listingSightings).values({
-      listingId: id,
-      scrapeRunId,
-      searchRoutineId,
-      observedAt: now,
-      price,
-      data,
-    });
-    sightingsCreated++;
+    if (shouldRecordSighting) {
+      await db.insert(listingSightings).values({
+        listingId: id,
+        scrapeRunId,
+        searchRoutineId,
+        observedAt: now,
+        price,
+        data,
+      });
+      sightingsCreated++;
+    }
   }
 
   // Missing detection — only when this routine scrape is complete and ok
@@ -184,7 +217,8 @@ export async function ingestRoutineScrape(
           kind: "missing",
           oldPrice: null,
           newPrice: null,
-          notified: false,
+          // Removals must not trigger push
+          notified: true,
           createdAt: now,
         });
         eventsCreated++;

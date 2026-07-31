@@ -2,7 +2,10 @@ import type {
   EngineMeta,
   ItemView,
   ListingDetailResponse,
+  ScrapeRunJob,
+  ScrapeRunSummary,
   StatusResponse,
+  SystemSettings,
 } from "@watcher/shared";
 
 const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api";
@@ -147,17 +150,23 @@ export const api = {
     return request<{ configured: boolean; subscribers: number }>("/push/status");
   },
 
-  runs() {
-    return request<
-      Array<{
-        id: number;
-        status: string;
-        itemsFound: number | null;
-        routinesTotal: number | null;
-        startedAt: string;
-        finishedAt: string | null;
-        error: string | null;
-      }>
-    >("/runs");
+  runs(limit = 10) {
+    return request<ScrapeRunSummary[]>(`/runs?limit=${limit}`);
+  },
+
+  /** Per-routine jobs for one scrape run (expand on Status page). */
+  runJobs(runId: number) {
+    return request<ScrapeRunJob[]>(`/runs/${runId}/jobs`);
+  },
+
+  settings() {
+    return request<SystemSettings>("/settings");
+  },
+
+  updateSettings(body: { scrapIntervalMinutes: number }) {
+    return request<SystemSettings>("/settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
   },
 };

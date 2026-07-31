@@ -6,6 +6,7 @@ import { ListingsPage } from "@/pages/ListingsPage";
 import { ListingDetailPage } from "@/pages/ListingDetailPage";
 import { RoutinesPage } from "@/pages/RoutinesPage";
 import { StatusPage } from "@/pages/StatusPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { authenticated, loading } = useAuth();
@@ -36,6 +37,7 @@ export function App() {
         <Route path="listings/:id" element={<ListingDetailPage />} />
         <Route path="routines" element={<RoutinesPage />} />
         <Route path="status" element={<StatusPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/listings" replace />} />
       </Route>
     </Routes>

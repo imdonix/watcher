@@ -1,5 +1,10 @@
 import { Hono } from "hono";
-import type { ScrapeJobRequest, ScrapeJobResult } from "@watcher/shared";
+import type {
+  ScrapeItemRequest,
+  ScrapeItemResult,
+  ScrapeJobRequest,
+  ScrapeJobResult,
+} from "@watcher/shared";
 import { pool } from "./browser";
 import { getScraper, listEngines } from "./engines";
 import { log, logError } from "./lib/log";
@@ -86,6 +91,80 @@ app.post("/scrape", async (c) => {
         error: message,
         durationMs: Date.now() - started,
       } satisfies ScrapeJobResult,
+      500,
+    );
+  }
+});
+
+/** One-shot item detail page scrape (engine-defined shape). */
+app.post("/scrape-item", async (c) => {
+  const body = (await c.req.json()) as ScrapeItemRequest;
+  const engineKey = body.engine;
+  const url = String(body.url || "").trim();
+
+  if (!engineKey || !url) {
+    return c.json(
+      {
+        ok: false,
+        engine: engineKey || "",
+        url,
+        details: null,
+        error: "engine and url required",
+      } satisfies ScrapeItemResult,
+      400,
+    );
+  }
+
+  const scraper = getScraper(engineKey);
+  if (!scraper) {
+    return c.json(
+      {
+        ok: false,
+        engine: engineKey,
+        url,
+        details: null,
+        error: `Unknown engine: ${engineKey}`,
+      } satisfies ScrapeItemResult,
+      400,
+    );
+  }
+
+  const started = Date.now();
+  log("ScrapeItem", `start ${scraper.slug} ${url}`);
+
+  try {
+    const result = await pool.withPage(async (page) =>
+      scraper.scrapeItem(page, { url, listingId: body.listingId }),
+    );
+    const durationMs = Date.now() - started;
+    const ok = Boolean(result.details) && !result.error;
+    log(
+      "ScrapeItem",
+      `done ${scraper.slug} ok=${ok} attrs=${Object.keys(result.details?.attributes ?? {}).length} ${durationMs}ms`,
+    );
+    return c.json({
+      ok,
+      engine: scraper.slug,
+      url,
+      details: result.details,
+      name: result.name,
+      price: result.price,
+      image: result.image,
+      error: result.error,
+      durationMs,
+    } satisfies ScrapeItemResult);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logError("ScrapeItem", `${scraper.slug}: ${message}`);
+    return c.json(
+      {
+        ok: false,
+        engine: scraper.slug,
+        url,
+        details: null,
+        error: message,
+        durationMs: Date.now() - started,
+      } satisfies ScrapeItemResult,
       500,
     );
   }

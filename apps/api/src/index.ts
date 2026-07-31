@@ -1,15 +1,17 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { createDb, runMigrations } from "@watcher/db";
+import { closeDb, createDb, runMigrations } from "@watcher/db";
 import { env } from "./env";
 import { log, logError } from "./lib/time";
-import { startScheduler } from "./services/processor";
+import { startScheduler, stopScheduler } from "./services/processor";
 import { resolveAndPersistApiToken } from "./services/api-token";
+import { loadRuntimeSettings } from "./services/settings";
 import { authRoutes } from "./routes/auth";
 import { routineRoutes } from "./routes/routines";
 import { itemRoutes } from "./routes/items";
 import { jobRoutes } from "./routes/jobs";
 import { pushRoutes } from "./routes/push";
+import { settingsRoutes } from "./routes/settings";
 import { initWebPush } from "./services/push";
 
 async function waitForDb(attempts = 30) {
@@ -66,6 +68,7 @@ async function main() {
   const db = createDb(env.databaseUrl);
 
   await resolveAndPersistApiToken(db);
+  await loadRuntimeSettings(db);
 
   initWebPush();
   log("Notify", "transports: logger + web push");
@@ -89,11 +92,13 @@ async function main() {
   const itemsApp = itemRoutes(db);
   const jobs = jobRoutes(db);
   const push = pushRoutes(db);
+  const settingsApp = settingsRoutes(db);
 
   app.route("/auth", auth);
   app.route("/routines", routines);
   app.route("/items", itemsApp);
   app.route("/push", push);
+  app.route("/settings", settingsApp);
   app.route("/", jobs);
 
   app.post("/login", (c) =>
@@ -133,7 +138,7 @@ async function main() {
     ),
   );
 
-  Bun.serve({
+  const server = Bun.serve({
     port: env.port,
     fetch: app.fetch,
   });
@@ -141,6 +146,36 @@ async function main() {
   // Print last so it is not collapsed under "N lines elided"
   log("HTTP", `started on localhost:${env.port}`);
   logApiToken();
+
+  // k8s sends SIGTERM on pod delete; without this Bun keeps the event loop
+  // (serve + setInterval + postgres) until the grace period hard-kills us.
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    log("HTTP", `${signal} received — shutting down`);
+
+    // Hard cap so a stuck DB close cannot burn the whole terminationGracePeriod
+    const forceTimer = setTimeout(() => {
+      logError("HTTP", "shutdown timed out — force exit");
+      process.exit(1);
+    }, 8_000);
+    // Don't keep the process alive only for this timer
+    forceTimer.unref?.();
+
+    try {
+      stopScheduler();
+      server.stop(true);
+      await closeDb(db, 2);
+    } catch (err) {
+      logError("HTTP", `shutdown error: ${err}`);
+    }
+    clearTimeout(forceTimer);
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((err) => {

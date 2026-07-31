@@ -1,4 +1,9 @@
-import type { ScrapeJobRequest, ScrapeJobResult } from "@watcher/shared";
+import type {
+  ScrapeItemRequest,
+  ScrapeItemResult,
+  ScrapeJobRequest,
+  ScrapeJobResult,
+} from "@watcher/shared";
 import { env } from "../env";
 import { log, logError } from "../lib/time";
 
@@ -39,6 +44,42 @@ export async function runScrapeJob(req: ScrapeJobRequest): Promise<ScrapeJobResu
       pagesFailed: 1,
       items: [],
       engine: req.engine,
+      error: message,
+    };
+  }
+}
+
+export async function runScrapeItem(req: ScrapeItemRequest): Promise<ScrapeItemResult> {
+  const url = `${env.scraperUrl.replace(/\/$/, "")}/scrape-item`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+      signal: AbortSignal.timeout(60_000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      logError("ScraperClient", `item HTTP ${res.status}: ${text}`);
+      return {
+        ok: false,
+        engine: req.engine,
+        url: req.url,
+        details: null,
+        error: `Scraper HTTP ${res.status}`,
+      };
+    }
+
+    return (await res.json()) as ScrapeItemResult;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logError("ScraperClient", `item: ${message}`);
+    return {
+      ok: false,
+      engine: req.engine,
+      url: req.url,
+      details: null,
       error: message,
     };
   }

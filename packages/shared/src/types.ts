@@ -28,7 +28,20 @@ export interface ScrapedItem {
   [key: string]: unknown;
 }
 
-/** Result of one engine scrape for one routine */
+/**
+ * Engine-controlled payload from an individual listing page scrape.
+ * Each engine decides which attributes / extras make sense for its site.
+ */
+export interface ListingItemDetails {
+  description?: string | null;
+  images?: string[];
+  /** Free-form facts (rooms, mileage, seller type, …) */
+  attributes?: Record<string, string | number | boolean | null>;
+  /** Engine-private structured extras */
+  extra?: Record<string, unknown>;
+}
+
+/** Result of one engine scrape for one routine (search / list pages) */
 export interface ScrapeJobResult {
   ok: boolean;
   /**
@@ -49,6 +62,29 @@ export interface ScrapeJobRequest {
   engine: string;
   routine: Record<string, unknown>;
 }
+
+/** Request to scrape a single listing detail page */
+export interface ScrapeItemRequest {
+  engine: string;
+  url: string;
+  listingId?: string;
+}
+
+export interface ScrapeItemResult {
+  ok: boolean;
+  engine: string;
+  url: string;
+  details: ListingItemDetails | null;
+  /** Optional list-level field upgrades from the detail page */
+  name?: string | null;
+  price?: number | null;
+  image?: string | null;
+  error?: string;
+  durationMs?: number;
+}
+
+/** Synthetic engine slug for the per-run item-details job in scrape_routine_results */
+export const ITEM_DETAILS_JOB_SLUG = "__item_details__";
 
 export type ListingStatus = "active" | "missing";
 
@@ -78,6 +114,8 @@ export interface ListingDetailResponse {
   listing: ItemView & {
     imageUrl?: string | null;
     lastData?: Record<string, unknown>;
+    details?: ListingItemDetails | null;
+    detailsScrapedAt?: string | null;
   };
   sightings: Array<{
     id: number;
@@ -114,6 +152,26 @@ export interface ApiError {
   details?: string;
 }
 
+/** Live scrape progress while a run is active (null / idle when not scraping). */
+export interface ScrapeProgress {
+  phase: "idle" | "starting" | "routine" | "details" | "finishing" | "notify";
+  /** Human-readable line for the UI banner */
+  message: string;
+  runId?: number | null;
+  /** 1-based index of the routine currently scraping */
+  routineIndex?: number | null;
+  routinesTotal?: number | null;
+  engineSlug?: string | null;
+  engineName?: string | null;
+  routineLabel?: string | null;
+  /** Listings seen so far in this run (after each routine ingest) */
+  listingsSeen?: number | null;
+  /** Item-detail job progress */
+  detailsIndex?: number | null;
+  detailsTotal?: number | null;
+  startedAt?: string | null;
+}
+
 export interface SchedulerStatus {
   scrapIntervalMinutes: number;
   /** @deprecated clock-based notify removed — kept for older clients */
@@ -126,6 +184,8 @@ export interface SchedulerStatus {
   lastNotifyAt?: string | null;
   scraperStartedAt: string;
   scrapeInProgress?: boolean;
+  /** Present while scrapeInProgress; describes current step */
+  scrapeProgress?: ScrapeProgress | null;
 }
 
 export interface ServiceHealth {
@@ -134,21 +194,50 @@ export interface ServiceHealth {
   detail?: string;
 }
 
+export interface ScrapeRunSummary {
+  id: number;
+  status: string;
+  listingsFound: number | null;
+  routinesTotal: number | null;
+  routinesComplete: number | null;
+  sightingsCreated: number | null;
+  startedAt: string;
+  finishedAt: string | null;
+  error: string | null;
+}
+
+/** One routine job inside a scrape run */
+export interface ScrapeRunJob {
+  id: number;
+  scrapeRunId: number;
+  searchRoutineId: number | null;
+  engineSlug: string;
+  complete: boolean;
+  pagesPlanned: number | null;
+  pagesFetched: number | null;
+  pagesFailed: number | null;
+  itemsSeen: number | null;
+  error: string | null;
+  /** Short label from routine config (keywords / path / key) */
+  label: string | null;
+}
+
 export interface StatusResponse {
   ok: boolean;
   services: ServiceHealth[];
   scheduler: SchedulerStatus;
-  runs: Array<{
-    id: number;
-    status: string;
-    listingsFound: number | null;
-    routinesTotal: number | null;
-    startedAt: string;
-    finishedAt: string | null;
-    error: string | null;
-  }>;
+  runs: ScrapeRunSummary[];
   transports: { logger: boolean; push: boolean };
   pushSubscribers: number;
 }
 
 export type ListingEventKind = "first_seen" | "price_change" | "missing" | "reappeared";
+
+/** System settings (persisted in `settings` table). */
+export interface SystemSettings {
+  scrapIntervalMinutes: number;
+  scrapIntervalMin: number;
+  scrapIntervalMax: number;
+  nextScrapeAt: string | null;
+  lastScrapeAt: string | null;
+}

@@ -3,9 +3,12 @@ import { listingEvents, listings, type Database } from "@watcher/db";
 import { dateOnly, log } from "../lib/time";
 import { isPushConfigured, sendPushToAll } from "./push";
 
+/** Only brand-new listings warrant a push. */
+const NOTIFY_KINDS = ["first_seen"] as const;
+
 /**
- * Mark pending events notified and push a short summary.
- * Always sends a push after scrape (even when count is 0).
+ * Push only for new listings (first_seen). Other unnotified events
+ * (missing, price_change, reappeared) are marked handled without a push.
  */
 export async function notifyAfterScrape(
   db: Database,
@@ -20,31 +23,54 @@ export async function notifyAfterScrape(
     .innerJoin(listings, eq(listingEvents.listingId, listings.id))
     .where(eq(listingEvents.notified, false));
 
-  const n = pending.length;
+  const toNotify = pending.filter((p) =>
+    (NOTIFY_KINDS as readonly string[]).includes(p.event.kind),
+  );
+  const toSilence = pending.filter(
+    (p) => !(NOTIFY_KINDS as readonly string[]).includes(p.event.kind),
+  );
+
+  // Drain non-notify events so they never surface as "findings"
+  for (const { event } of toSilence) {
+    await db
+      .update(listingEvents)
+      .set({ notified: true })
+      .where(eq(listingEvents.id, event.id));
+  }
+  if (toSilence.length > 0) {
+    log(
+      "Notify",
+      `post-scrape (${scrapeStatus}) — silenced ${toSilence.length} non-new event(s)`,
+    );
+  }
+
+  const n = toNotify.length;
   if (n === 0) {
-    log("Notify", `post-scrape (${scrapeStatus}) — no new findings, skip push`);
+    log("Notify", `post-scrape (${scrapeStatus}) — no new listings, skip push`);
     return 0;
   }
 
-  const message = `Found ${n} new finding${n === 1 ? "" : "s"}.`;
+  // Single line of info — no branded title (SW shows body as the notification text)
+  const message =
+    n === 1 ? "1 new listing available" : `${n} new listings available`;
   log("Notify", `post-scrape (${scrapeStatus}) — ${message}`);
 
   const pushOk = await sendPushToAll(db, {
-    title: "Watcher",
+    title: "",
     body: message,
     url: "/listings",
     tag: `watcher-${dateOnly()}`,
     count: n,
   });
 
-  for (const { event } of pending) {
+  for (const { event } of toNotify) {
     await db
       .update(listingEvents)
       .set({ notified: true })
       .where(eq(listingEvents.id, event.id));
   }
 
-  log("Notify", `done: ${n} event(s) marked, push→${pushOk} device(s)`);
+  log("Notify", `done: ${n} new listing(s) marked, push→${pushOk} device(s)`);
   return n;
 }
 

@@ -23,6 +23,8 @@ function mapListing(row: typeof listings.$inferSelect, sightingCount = 0) {
     lastSeenAt: row.lastSeenAt,
     sightingCount,
     found: row.lastSeenAt,
+    details: row.details ?? null,
+    detailsScrapedAt: row.detailsScrapedAt ?? null,
   };
 }
 
