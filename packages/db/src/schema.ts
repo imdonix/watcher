@@ -57,11 +57,22 @@ export const listings = pgTable("listings", {
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
   lastPrice: integer("last_price"),
   lastData: jsonb("last_data").$type<Record<string, unknown>>().notNull().default({}),
+  /**
+   * Engine-specific payload from a one-time item-page scrape
+   * (description, attributes, images, …). Null until scraped or on failure.
+   */
+  details: jsonb("details").$type<Record<string, unknown> | null>(),
+  /** Set after a completed detail attempt (success or fail) — never re-scraped. */
+  detailsScrapedAt: timestamp("details_scraped_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/** One row per observation of a listing during a scrape (price history, presence). */
+/**
+ * Change log for a listing (price history / content snapshots).
+ * Written only on first see or when scraped fields differ from the last snapshot —
+ * not once per scrape observation.
+ */
 export const listingSightings = pgTable("listing_sightings", {
   id: serial("id").primaryKey(),
   listingId: varchar("listing_id", { length: 64 })

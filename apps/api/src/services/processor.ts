@@ -5,12 +5,13 @@ import {
   scrapeRuns,
   type Database,
 } from "@watcher/db";
-import { ENGINES, findEngineById } from "@watcher/shared";
+import { ENGINES, findEngineById, type ScrapeProgress } from "@watcher/shared";
 import { env } from "../env";
 import { log, logError } from "../lib/time";
 import { runScrapeJob } from "./scraper-client";
 import { notifyAfterScrape } from "./notify";
 import { ingestRoutineScrape } from "./listing-ingest";
+import { runItemDetailsJob } from "./item-details";
 
 const STATE_ID = 1;
 
@@ -21,6 +22,28 @@ const processStartedAt = new Date();
 let lastScrapeAt: Date | null = null;
 let nextScrapeAt: Date | null = null;
 let lastNotifyAt: Date | null = null;
+
+const idleProgress = (): ScrapeProgress => ({
+  phase: "idle",
+  message: "",
+});
+
+let scrapeProgress: ScrapeProgress = idleProgress();
+
+function setProgress( partial: Partial<ScrapeProgress> & Pick<ScrapeProgress, "phase" | "message">): void {
+  scrapeProgress = {
+    ...scrapeProgress,
+    ...partial,
+  };
+}
+
+function routineLabelFromConfig(config: Record<string, unknown>): string | null {
+  for (const k of ["keywords", "key", "path", "listaPath", "query", "location"] as const) {
+    const v = config[k];
+    if (v != null && String(v).trim()) return String(v).trim();
+  }
+  return null;
+}
 
 function scrapIntervalMs(): number {
   return Math.max(1, env.scrapIntervalMinutes) * 60_000;
@@ -122,6 +145,41 @@ export function getSchedulerStatus() {
     lastNotifyAt: lastNotifyAt?.toISOString() ?? null,
     scraperStartedAt: processStartedAt.toISOString(),
     scrapeInProgress: scraping,
+    scrapeProgress: scraping ? scrapeProgress : null,
+  };
+}
+
+/**
+ * Apply a new scrape interval in-memory and reschedule the next run.
+ * Caller is responsible for persisting the setting to the DB.
+ */
+export async function applyScrapIntervalMinutes(
+  db: Database,
+  minutes: number,
+): Promise<{ scrapIntervalMinutes: number; nextScrapeAt: string | null }> {
+  const clamped = Math.max(1, Math.floor(minutes));
+  env.scrapIntervalMinutes = clamped;
+
+  const now = Date.now();
+  if (lastScrapeAt) {
+    nextScrapeAt = new Date(lastScrapeAt.getTime() + scrapIntervalMs());
+    // If the new interval makes the next run overdue, fire soon (not immediately mid-request storm)
+    if (nextScrapeAt.getTime() <= now) {
+      nextScrapeAt = new Date(now + 15_000);
+    }
+  } else {
+    nextScrapeAt = new Date(now + scrapIntervalMs());
+  }
+
+  await persistState(db);
+  log(
+    "Scheduler",
+    `scrap interval set to ${clamped}m · next scrape ${nextScrapeAt.toISOString()}`,
+  );
+
+  return {
+    scrapIntervalMinutes: clamped,
+    nextScrapeAt: nextScrapeAt.toISOString(),
   };
 }
 
@@ -202,10 +260,33 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
   }
 
   scraping = true;
+  const startedAt = new Date().toISOString();
+  setProgress({
+    phase: "starting",
+    message: "Starting scrape run…",
+    runId: null,
+    routineIndex: null,
+    routinesTotal: null,
+    engineSlug: null,
+    engineName: null,
+    routineLabel: null,
+    listingsSeen: 0,
+    detailsIndex: null,
+    detailsTotal: null,
+    startedAt,
+  });
+
   const [run] = await db
     .insert(scrapeRuns)
     .values({ status: "running" })
     .returning();
+
+  setProgress({
+    phase: "starting",
+    message: `Run #${run.id} — loading routines…`,
+    runId: run.id,
+    startedAt,
+  });
 
   let totalSightings = 0;
   let totalSeen = 0;
@@ -224,7 +305,20 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
       .set({ routinesTotal: allRoutines.length })
       .where(eq(scrapeRuns.id, run.id));
 
+    setProgress({
+      phase: "starting",
+      message:
+        allRoutines.length === 0
+          ? "No enabled routines — finishing…"
+          : `Run #${run.id} · ${allRoutines.length} routine${allRoutines.length === 1 ? "" : "s"}`,
+      runId: run.id,
+      routinesTotal: allRoutines.length,
+      listingsSeen: 0,
+    });
+
+    let routineStep = 0;
     for (const routine of allRoutines) {
+      routineStep++;
       const engine = findEngineById(routine.engineId);
       if (!engine) {
         logError("Processor", `unknown engine id ${routine.engineId}`);
@@ -236,6 +330,20 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
         engine: routine.engineId,
         ...routine.config,
       };
+      const label = routineLabelFromConfig(config);
+      const where = label ? ` · ${label}` : "";
+
+      setProgress({
+        phase: "routine",
+        message: `Routine ${routineStep}/${allRoutines.length}: scraping ${engine.name}${where}`,
+        runId: run.id,
+        routineIndex: routineStep,
+        routinesTotal: allRoutines.length,
+        engineSlug: engine.slug,
+        engineName: engine.name,
+        routineLabel: label,
+        listingsSeen: totalSeen,
+      });
 
       const result = await runScrapeJob({
         engine: engine.slug,
@@ -259,6 +367,18 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
         anyIncomplete = true;
       }
 
+      setProgress({
+        phase: "routine",
+        message: `Routine ${routineStep}/${allRoutines.length}: saving ${engine.name}${where} (${normalized.items.length} items)`,
+        runId: run.id,
+        routineIndex: routineStep,
+        routinesTotal: allRoutines.length,
+        engineSlug: engine.slug,
+        engineName: engine.name,
+        routineLabel: label,
+        listingsSeen: totalSeen,
+      });
+
       const ingest = await ingestRoutineScrape(db, {
         scrapeRunId: run.id,
         searchRoutineId: routine.id,
@@ -271,14 +391,77 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
       if (ingest.complete) routinesComplete++;
       else anyIncomplete = true;
 
+      setProgress({
+        phase: "routine",
+        message: `Routine ${routineStep}/${allRoutines.length} done: ${engine.name}${where} · ${ingest.itemsSeen} listings`,
+        listingsSeen: totalSeen,
+      });
+
       log(
         "Scrap",
         `/${engine.name}->${String(config.keywords ?? "")}/ seen=${ingest.itemsSeen} complete=${ingest.complete}`,
       );
     }
 
+    // Special job: one-time item-page scrapes for listings missing details
+    try {
+      setProgress({
+        phase: "details",
+        message: "Checking listings that need item-page details…",
+        runId: run.id,
+        routinesTotal: allRoutines.length,
+        listingsSeen: totalSeen,
+        detailsIndex: null,
+        detailsTotal: null,
+      });
+
+      const detailsJob = await runItemDetailsJob(db, run.id, (info) => {
+        const shortName =
+          info.name.length > 48 ? `${info.name.slice(0, 45)}…` : info.name;
+        setProgress({
+          phase: "details",
+          message: `Item details ${info.index}/${info.total}: ${info.engineSlug} · ${shortName}`,
+          runId: run.id,
+          listingsSeen: totalSeen,
+          detailsIndex: info.index,
+          detailsTotal: info.total,
+          engineSlug: info.engineSlug,
+          engineName: info.engineSlug,
+          routineLabel: shortName,
+        });
+      });
+      if (!detailsJob.complete) anyIncomplete = true;
+      if (detailsJob.planned > 0) {
+        setProgress({
+          phase: "details",
+          message: `Item details finished: ${detailsJob.fetched} ok, ${detailsJob.failed} failed`,
+          detailsIndex: detailsJob.planned,
+          detailsTotal: detailsJob.planned,
+          listingsSeen: totalSeen,
+        });
+      }
+      log(
+        "Processor",
+        `item-details job planned=${detailsJob.planned} ok=${detailsJob.fetched} failed=${detailsJob.failed}`,
+      );
+    } catch (err) {
+      anyIncomplete = true;
+      logError("Processor", `item-details job failed: ${err}`);
+    }
+
+    setProgress({
+      phase: "finishing",
+      message: `Finishing run #${run.id} · ${totalSeen} listings seen…`,
+      runId: run.id,
+      listingsSeen: totalSeen,
+    });
+
     finalStatus =
-      allRoutines.length === 0 ? "done" : anyIncomplete ? "incomplete" : "done";
+      allRoutines.length === 0 && totalSeen === 0
+        ? "done"
+        : anyIncomplete
+          ? "incomplete"
+          : "done";
 
     await db
       .update(scrapeRuns)
@@ -300,6 +483,12 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
     return { found: totalSightings, runId: run.id };
   } catch (err) {
     finalStatus = "error";
+    setProgress({
+      phase: "finishing",
+      message: `Run failed: ${String(err).slice(0, 120)}`,
+      runId: run.id,
+      listingsSeen: totalSeen,
+    });
     await db
       .update(scrapeRuns)
       .set({
@@ -314,9 +503,16 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
     await markScrapeFinished(db);
     throw err;
   } finally {
-    scraping = false;
+    setProgress({
+      phase: "notify",
+      message: "Sending notifications…",
+      runId: run.id,
+      listingsSeen: totalSeen,
+    });
     // Always notify after scrape ends (success or failure)
     await notifyScrapeDone(db, finalStatus);
+    scraping = false;
+    scrapeProgress = idleProgress();
   }
 }
 

@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   BellOff,
@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Radar,
   RefreshCw,
+  Settings,
   Settings2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -43,14 +44,17 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/listings")) return "Listings";
   if (pathname.startsWith("/routines")) return "Routines";
   if (pathname.startsWith("/status")) return "Status";
+  if (pathname.startsWith("/settings")) return "Settings";
   return "Watcher";
 }
 
 export function AppLayout() {
   const { logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const title = useMemo(() => pageTitle(location.pathname), [location.pathname]);
   const isDetail = /^\/listings\/.+/.test(location.pathname);
+  const onSettings = location.pathname.startsWith("/settings");
 
   const [scraping, setScraping] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
@@ -180,6 +184,13 @@ export function AppLayout() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>Settings</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={() => navigate("/settings")}
+                  className={cn(onSettings && "bg-accent")}
+                >
+                  <Settings />
+                  <span className="flex-1">System settings</span>
+                </DropdownMenuItem>
                 {isPushSupported() && (
                   <DropdownMenuItem
                     disabled={pushBusy}

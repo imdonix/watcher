@@ -56,8 +56,7 @@ interface PushData {
 
 self.addEventListener("push", (event: PushEvent) => {
   let data: PushData = {
-    title: "Watcher",
-    body: "New deals available",
+    body: "New listing available",
     url: "/listings",
   };
 
@@ -74,9 +73,11 @@ self.addEventListener("push", (event: PushEvent) => {
     /* defaults */
   }
 
-  const title = data.title || "Watcher";
+  // Prefer body as the only visible text (no branded "Watcher" title).
+  // Notification API requires a title — use the message there and omit body.
+  const message = (data.body || data.title || "New listing available").trim();
   const options = {
-    body: data.body || "New deals available",
+    body: "",
     icon: "/icons/icon-192.png",
     badge: "/icons/icon-192.png",
     tag: data.tag || "watcher-deals",
@@ -85,7 +86,7 @@ self.addEventListener("push", (event: PushEvent) => {
     requireInteraction: false,
   } satisfies NotificationOptions & { renotify?: boolean };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(self.registration.showNotification(message, options));
 });
 
 self.addEventListener("notificationclick", (event: NotificationEvent) => {

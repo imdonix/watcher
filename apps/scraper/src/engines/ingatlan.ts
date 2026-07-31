@@ -4,11 +4,13 @@ import {
   buildIngatlanSearchUrl,
   cyrb53,
   ENGINE_SLUGS,
+  type ListingItemDetails,
   type ScrapedItem,
 } from "@watcher/shared";
 import { absoluteUrl, humanDelay, parsePriceHu, randomBetween } from "../lib/util";
 import { dismissConsent } from "../lib/consent";
-import type { EngineScraper } from "./types";
+import { gotoSmart } from "../browser";
+import type { EngineItemScrapeResult, EngineScraper } from "./types";
 import { log } from "../lib/log";
 
 const BASE = "https://ingatlan.com";
@@ -280,9 +282,117 @@ function parseListingPrice(priceText: string | null | undefined): number | null 
   return parsePriceHu(t);
 }
 
+async function scrapeIngatlanItem(page: Page, url: string): Promise<EngineItemScrapeResult> {
+  await gotoSmart(page, url);
+  await dismissConsent(page);
+  try {
+    await page.waitForSelector("h1, [class*='address'], .listing-title, main", {
+      timeout: 12_000,
+    });
+  } catch {
+    /* parse anyway */
+  }
+
+  const title = await page.title();
+  if (isBlockedTitle(title)) {
+    return { details: null, error: `ingatlan item blocked: ${title}` };
+  }
+
+  const raw = await page.evaluate(() => {
+    const text = (el: Element | null | undefined) =>
+      el?.textContent?.replace(/\s+/g, " ").trim() || "";
+
+    const name =
+      text(document.querySelector("h1")) ||
+      text(document.querySelector("[class*='address'], .listing-title, .property-title")) ||
+      document.title.split("|")[0]?.trim() ||
+      "";
+
+    const priceText =
+      text(
+        document.querySelector(
+          "[class*='price'], .listing-price, [data-testid*='price'], .fs-4, .fs-5",
+        ),
+      ) || null;
+
+    let description =
+      text(
+        document.querySelector(
+          "[class*='description'], #description, [data-testid*='description'], .listing-description",
+        ),
+      ) || "";
+    if (!description) {
+      description = Array.from(document.querySelectorAll("main p, article p, .content p"))
+        .map((p) => text(p))
+        .filter((t) => t.length > 40)
+        .slice(0, 10)
+        .join("\n\n");
+    }
+
+    const attributes: Record<string, string> = {};
+    for (const row of Array.from(
+      document.querySelectorAll(
+        "table tr, .parameters tr, [class*='parameter'] li, dl > div, .listing-parameter, [class*='Param']",
+      ),
+    )) {
+      const cells = row.querySelectorAll("td, th, dt, dd, span, strong");
+      if (cells.length >= 2) {
+        const k = text(cells[0]);
+        const v = text(cells[1]);
+        if (k && v && k.length < 80 && v.length < 200 && k !== v) attributes[k] = v;
+      } else {
+        const full = text(row);
+        const m = full.match(/^([^:]+):\s*(.+)$/);
+        if (m && m[1].length < 60) attributes[m[1].trim()] = m[2].trim();
+      }
+    }
+
+    const images: string[] = [];
+    const seen = new Set<string>();
+    for (const img of Array.from(
+      document.querySelectorAll<HTMLImageElement>(
+        "img[src*='ingatlan'], .gallery img, [class*='gallery'] img, [class*='carousel'] img, main img",
+      ),
+    )) {
+      const src = img.currentSrc || img.src || img.getAttribute("data-src") || "";
+      if (!src || src.startsWith("data:") || /logo|icon|sprite|map/i.test(src)) continue;
+      if (seen.has(src)) continue;
+      seen.add(src);
+      images.push(src);
+      if (images.length >= 12) break;
+    }
+
+    return { name, priceText, description, attributes, images };
+  });
+
+  const price = parseListingPrice(raw.priceText != null ? String(raw.priceText) : null);
+  const details: ListingItemDetails = {
+    description: raw.description ? String(raw.description).slice(0, 8000) : null,
+    images: Array.isArray(raw.images) ? (raw.images as string[]) : [],
+    attributes: (raw.attributes as Record<string, string>) || {},
+    extra: { source: "ingatlan.item", priceText: raw.priceText },
+  };
+
+  if (!raw.name && !details.description && details.images!.length === 0) {
+    return { details: null, error: "Could not parse ingatlan item page" };
+  }
+
+  return {
+    details,
+    name: raw.name ? String(raw.name) : null,
+    price,
+    image: details.images?.[0] ?? null,
+  };
+}
+
 export const ingatlanEngine: EngineScraper = {
   slug: ENGINE_SLUGS.ingatlan,
   name: "ingatlan.com",
+
+  async scrapeItem(page, input) {
+    log("ingatlan", `item: ${input.url}`);
+    return scrapeIngatlanItem(page, input.url);
+  },
 
   async scrape(seedPage, routine) {
     const searchPath = buildIngatlanSearchPath(routine);

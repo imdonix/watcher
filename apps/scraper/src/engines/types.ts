@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import type { ScrapedItem } from "@watcher/shared";
+import type { ListingItemDetails, ScrapedItem } from "@watcher/shared";
 
 /** Per-engine scrape outcome with pagination quality signals */
 export interface EngineScrapeResult {
@@ -18,10 +18,29 @@ export interface EngineScrapeResult {
   error?: string;
 }
 
+/** Engine-owned result of scraping one listing detail page */
+export interface EngineItemScrapeResult {
+  details: ListingItemDetails | null;
+  name?: string | null;
+  price?: number | null;
+  image?: string | null;
+  error?: string;
+}
+
+export interface ScrapeItemInput {
+  url: string;
+  listingId?: string;
+}
+
+/**
+ * Each engine implements list scrape + optional item-page scrape.
+ * Item scrape shape is fully controlled by the engine (details payload).
+ */
 export interface EngineScraper {
   slug: string;
   name: string;
   scrape(page: Page, routine: Record<string, unknown>): Promise<EngineScrapeResult>;
+  scrapeItem(page: Page, input: ScrapeItemInput): Promise<EngineItemScrapeResult>;
 }
 
 export function emptyResult(pagesPlanned: number, error?: string): EngineScrapeResult {

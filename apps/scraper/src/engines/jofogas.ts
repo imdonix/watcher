@@ -3,12 +3,13 @@ import {
   buildJofogasSearchUrl,
   cyrb53,
   ENGINE_SLUGS,
+  type ListingItemDetails,
   type ScrapedItem,
 } from "@watcher/shared";
 import { absoluteUrl, humanDelay, parsePriceHu } from "../lib/util";
 import { dismissConsent } from "../lib/consent";
 import { gotoSmart } from "../browser";
-import type { EngineScraper } from "./types";
+import type { EngineItemScrapeResult, EngineScraper } from "./types";
 import { log } from "../lib/log";
 
 /**
@@ -346,9 +347,311 @@ function parseJofogasPrice(text: string | null | undefined): number | null {
   return parsePriceHu(cleaned || t);
 }
 
+/** Jófogás chrome / legal copy that must never be treated as the ad description. */
+const JOFOGAS_BOILERPLATE_RE =
+  /elérhető kapcsolattartási lehetőségeket a hirdető határozza meg|keress és válogass közel másfélmillió|felhasználói szabályzatunk|adatvédelmi tájékoztatónk|a jófogást megtalálod a közösségi|szerzői jogi védelem alatt álló oldal|a honlapon elhelyezett szöveges és képi|cookie|sütik|felhasználói szabályzat|adatvédelmi szabályzat|minden jog fenntartva|copyright|©\s*j[oó]fog[aá]s/i;
+
+function isJofogasBoilerplate(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (JOFOGAS_BOILERPLATE_RE.test(t)) return true;
+  // Long multi-sentence legal/marketing blobs with no ad-like content
+  if (
+    t.length > 120 &&
+    /szabályzat|adatvédelm|szerzői jog|közösségi oldal/i.test(t) &&
+    !/[€$]|\d[\d\s.]*\s*Ft|eladó|kiadó|állapot|méret|km|évjárat/i.test(t)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Drop boilerplate paragraphs; keep real newlines between kept blocks. */
+function cleanJofogasDescription(raw: string): string {
+  const normalized = raw
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    // collapse spaces/tabs within a line, keep newlines
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (!normalized) return "";
+
+  const blocks = normalized
+    .split(/\n{2,}|\n/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+
+  const kept: string[] = [];
+  for (const block of blocks) {
+    if (isJofogasBoilerplate(block)) continue;
+    // Skip ultra-short nav crumbs
+    if (block.length < 3) continue;
+    kept.push(block);
+  }
+
+  // Re-join with blank lines so UI whitespace-pre-wrap shows paragraphs
+  return kept.join("\n\n").slice(0, 8000);
+}
+
+async function scrapeJofogasItem(page: Page, url: string): Promise<EngineItemScrapeResult> {
+  await gotoSmart(page, url);
+  await dismissConsent(page);
+  try {
+    await page.waitForSelector("h1, [data-testid='ad-title'], .advert-title, article", {
+      timeout: 12_000,
+    });
+  } catch {
+    /* continue — still try to parse */
+  }
+
+  const raw = await page.evaluate(() => {
+    /** Single-line collapse (titles, prices, attributes). */
+    const text = (el: Element | null | undefined) =>
+      el?.textContent?.replace(/\s+/g, " ").trim() || "";
+
+    /**
+     * Preserve line breaks from the ad body.
+     * Prefer innerText (layout-aware). Convert <br> and block tags to newlines
+     * when walking a dedicated description node.
+     */
+    const blockText = (el: Element | null | undefined): string => {
+      if (!el) return "";
+      const clone = el.cloneNode(true) as HTMLElement;
+      // Drop nested chrome inside the description container
+      clone
+        .querySelectorAll("script, style, noscript, button, nav, footer, form, svg")
+        .forEach((n) => n.remove());
+      clone.querySelectorAll("br").forEach((br) => {
+        br.replaceWith(document.createTextNode("\n"));
+      });
+      // Block elements → trailing newline
+      clone.querySelectorAll("p, div, li, h1, h2, h3, h4, tr, section, article").forEach((node) => {
+        if (!node.textContent?.endsWith("\n")) {
+          node.appendChild(document.createTextNode("\n"));
+        }
+      });
+      const rawText = clone.innerText || clone.textContent || "";
+      return rawText
+        .replace(/\r\n/g, "\n")
+        .replace(/\u00a0/g, " ")
+        .replace(/[^\S\n]+/g, " ")
+        .replace(/ *\n */g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    };
+
+    const inFooterOrNav = (el: Element | null) => {
+      if (!el) return true;
+      return Boolean(el.closest("footer, nav, header, [role='navigation'], [role='contentinfo']"));
+    };
+
+    const name =
+      text(document.querySelector("h1")) ||
+      text(document.querySelector("[data-testid='ad-title']")) ||
+      text(document.querySelector(".advert-title, .product-title")) ||
+      document.title.split("|")[0]?.trim() ||
+      "";
+
+    const priceText =
+      text(document.querySelector("[data-testid='ad-price'], .price-value, h2.MuiTypography-h2")) ||
+      text(document.querySelector(".priceBox .price-value, [itemprop='price']")) ||
+      null;
+
+    // ── Description: prefer dedicated ad body, never whole-page fallback ──
+    const DESC_SELECTORS = [
+      "[data-testid='ad-description']",
+      "[data-testid='ad-body']",
+      "#ad-description",
+      ".advert-description",
+      ".item-description",
+      ".product-description",
+      ".re-description",
+      "[itemprop='description']",
+      // Common jofogas/legacy class names
+      ".advert-details-description",
+      ".ad-description",
+      "#description",
+      "[class*='AdDescription']",
+      "[class*='adDescription']",
+      "[class*='DescriptionText']",
+    ];
+
+    let description = "";
+    for (const sel of DESC_SELECTORS) {
+      const el = document.querySelector(sel);
+      if (!el || inFooterOrNav(el)) continue;
+      const t = blockText(el);
+      if (t.length >= 8) {
+        description = t;
+        break;
+      }
+    }
+
+    // JSON-LD Product/Offer description (often clean, but may be single line)
+    if (!description) {
+      for (const script of Array.from(
+        document.querySelectorAll('script[type="application/ld+json"]'),
+      )) {
+        try {
+          const data = JSON.parse(script.textContent || "null") as unknown;
+          const nodes = Array.isArray(data) ? data : [data];
+          for (const node of nodes) {
+            if (!node || typeof node !== "object") continue;
+            const o = node as Record<string, unknown>;
+            const d = o.description;
+            if (typeof d === "string" && d.trim().length >= 8) {
+              description = d.trim();
+              break;
+            }
+          }
+          if (description) break;
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+
+    // Heading "Leírás" / "Leiras" followed by sibling content (MUI / RE layouts)
+    if (!description) {
+      const headings = Array.from(
+        document.querySelectorAll("h2, h3, h4, [class*='MuiTypography']"),
+      );
+      for (const h of headings) {
+        const label = text(h);
+        if (!/^le[ií]r[aá]s$/i.test(label) && !/description/i.test(label)) continue;
+        if (inFooterOrNav(h)) continue;
+        const parent = h.parentElement;
+        // Next sibling block, or rest of parent excluding the heading
+        let body: Element | null = h.nextElementSibling;
+        while (body && (text(body).length < 8 || body === h)) {
+          body = body.nextElementSibling;
+        }
+        if (body && !inFooterOrNav(body)) {
+          const t = blockText(body);
+          if (t.length >= 8) {
+            description = t;
+            break;
+          }
+        }
+        if (parent && !inFooterOrNav(parent)) {
+          const clone = parent.cloneNode(true) as HTMLElement;
+          const first = clone.querySelector("h2, h3, h4");
+          first?.remove();
+          const t = blockText(clone);
+          if (t.length >= 8) {
+            description = t;
+            break;
+          }
+        }
+      }
+    }
+
+    // Last resort: largest non-footer text block in main, excluding known chrome
+    if (!description) {
+      const candidates = Array.from(
+        document.querySelectorAll(
+          "main [class*='description'], main [class*='Description'], article [class*='description'], .content [class*='description']",
+        ),
+      ).filter((el) => !inFooterOrNav(el));
+      let best = "";
+      for (const el of candidates) {
+        const t = blockText(el);
+        if (t.length > best.length && t.length >= 20) best = t;
+      }
+      description = best;
+    }
+
+    const attributes: Record<string, string> = {};
+    for (const row of Array.from(
+      document.querySelectorAll(
+        "table tr, .parameter-row, [data-testid*='param'] li, dl > div, .reParam, .param-group",
+      ),
+    )) {
+      if (inFooterOrNav(row)) continue;
+      const cells = row.querySelectorAll("td, th, dt, dd, span, strong");
+      if (cells.length >= 2) {
+        const k = text(cells[0]);
+        const v = text(cells[1]);
+        if (k && v && k.length < 80 && v.length < 200) attributes[k] = v;
+      }
+    }
+    // dt/dd pairs
+    const dts = Array.from(document.querySelectorAll("dt"));
+    for (const dt of dts) {
+      if (inFooterOrNav(dt)) continue;
+      const k = text(dt);
+      const v = text(dt.nextElementSibling);
+      if (k && v) attributes[k] = v;
+    }
+
+    const location =
+      text(document.querySelector("[data-testid='ad-location'], .advert-location, .location")) ||
+      attributes["Helyszín"] ||
+      attributes["Település"] ||
+      null;
+
+    const images: string[] = [];
+    const seen = new Set<string>();
+    for (const img of Array.from(
+      document.querySelectorAll<HTMLImageElement>(
+        "img[src*='jofogas'], .gallery img, [data-testid*='gallery'] img, .carousel img, main img",
+      ),
+    )) {
+      if (inFooterOrNav(img)) continue;
+      const src = img.currentSrc || img.src || img.getAttribute("data-src") || "";
+      if (!src || src.startsWith("data:") || /logo|icon|avatar|sprite/i.test(src)) continue;
+      if (seen.has(src)) continue;
+      seen.add(src);
+      images.push(src);
+      if (images.length >= 12) break;
+    }
+
+    const seller =
+      text(document.querySelector("[data-testid='seller-name'], .seller-name, .advertiser-name")) ||
+      null;
+
+    return { name, priceText, description, attributes, location, images, seller };
+  });
+
+  const price = parseJofogasPrice(raw.priceText != null ? String(raw.priceText) : null);
+  const attributes: Record<string, string | number | boolean | null> = {
+    ...(raw.attributes as Record<string, string>),
+  };
+  if (raw.location) attributes["Location"] = String(raw.location);
+  if (raw.seller) attributes["Seller"] = String(raw.seller);
+
+  const description = cleanJofogasDescription(String(raw.description || ""));
+
+  const details: ListingItemDetails = {
+    description: description || null,
+    images: Array.isArray(raw.images) ? (raw.images as string[]) : [],
+    attributes,
+    extra: { source: "jofogas.item", priceText: raw.priceText },
+  };
+
+  if (!raw.name && !details.description && details.images!.length === 0) {
+    return { details: null, error: "Could not parse jofogas item page" };
+  }
+
+  return {
+    details,
+    name: raw.name ? String(raw.name) : null,
+    price,
+    image: details.images?.[0] ?? null,
+  };
+}
+
 export const jofogasEngine: EngineScraper = {
   slug: ENGINE_SLUGS.jofogas,
   name: "jofogas.hu",
+
+  async scrapeItem(page, input) {
+    log("jofogas", `item: ${input.url}`);
+    return scrapeJofogasItem(page, input.url);
+  },
 
   async scrape(page, routine) {
     const domain = String(routine.domain || "https://www.jofogas.hu/magyarorszag");

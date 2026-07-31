@@ -264,7 +264,7 @@ export function ListingsPage() {
                         </div>
 
                         <p className="text-[11px] text-muted-foreground sm:text-xs">
-                          Seen {formatRelative(item.lastSeenAt)}
+                          First seen {formatRelative(item.firstSeenAt)}
                         </p>
                       </button>
 

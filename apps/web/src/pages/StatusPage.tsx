@@ -2,10 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   CheckCircle2,
+  ChevronDown,
   Clock,
   XCircle,
 } from "lucide-react";
-import type { StatusResponse } from "@watcher/shared";
+import type { ScrapeRunJob, StatusResponse } from "@watcher/shared";
+import { ITEM_DETAILS_JOB_SLUG } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +25,10 @@ export function StatusPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastPolledAt, setLastPolledAt] = useState<Date | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
+  const [jobsByRun, setJobsByRun] = useState<Record<number, ScrapeRunJob[]>>({});
+  const [jobsLoadingId, setJobsLoadingId] = useState<number | null>(null);
+  const [jobsError, setJobsError] = useState<string | null>(null);
   const inFlight = useRef(false);
   const scrapeActive = Boolean(status?.scheduler.scrapeInProgress);
 
@@ -42,6 +48,31 @@ export function StatusPage() {
     }
   }, []);
 
+  const jobsCacheRef = useRef<Record<number, ScrapeRunJob[]>>({});
+
+  const loadJobs = useCallback(async (runId: number, force = false) => {
+    if (!force && jobsCacheRef.current[runId]) return;
+    setJobsLoadingId(runId);
+    setJobsError(null);
+    try {
+      const jobs = await api.runJobs(runId);
+      jobsCacheRef.current = { ...jobsCacheRef.current, [runId]: jobs };
+      setJobsByRun(jobsCacheRef.current);
+    } catch (err) {
+      setJobsError(err instanceof Error ? err.message : "Failed to load jobs");
+    } finally {
+      setJobsLoadingId(null);
+    }
+  }, []);
+
+  const toggleRun = useCallback((runId: number) => {
+    setExpandedRunId((prev) => {
+      if (prev === runId) return null;
+      void loadJobs(runId);
+      return runId;
+    });
+  }, [loadJobs]);
+
   // Initial load + adaptive polling
   useEffect(() => {
     void load();
@@ -52,6 +83,13 @@ export function StatusPage() {
     const t = setInterval(() => void load(), ms);
     return () => clearInterval(t);
   }, [load, scrapeActive]);
+
+  // Refresh expanded run jobs while a scrape is active (counts update live)
+  useEffect(() => {
+    if (!scrapeActive || expandedRunId == null) return;
+    const t = setInterval(() => void loadJobs(expandedRunId, true), POLL_ACTIVE_MS);
+    return () => clearInterval(t);
+  }, [scrapeActive, expandedRunId, loadJobs]);
 
   // Tick relative timestamps every 15s without refetch
   useEffect(() => {
@@ -81,9 +119,8 @@ export function StatusPage() {
   const successRuns = status.runs.filter((r) => r.status === "done").length;
   const failedRuns = status.runs.filter((r) => r.status === "error").length;
   const running = status.runs.filter((r) => r.status === "running").length;
-  const pollLabel = scrapeActive
-    ? "Live · every 2s while scraping"
-    : "Live · updates every 5s";
+  const incompleteRuns = status.runs.filter((r) => r.status === "incomplete").length;
+  const pollLabel = "Live";
 
   // re-render relative times when `now` ticks
   void now;
@@ -114,9 +151,54 @@ export function StatusPage() {
       </div>
 
       {status.scheduler.scrapeInProgress && (
-        <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-100">
-          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
-          Scrape in progress…
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-100">
+          <div className="flex items-start gap-2">
+            <span className="mt-1.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-500" />
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-sm font-medium">Scrape in progress</p>
+              <p className="text-sm leading-snug opacity-90">
+                {status.scheduler.scrapeProgress?.message || "Working…"}
+              </p>
+              {status.scheduler.scrapeProgress && (
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 pt-0.5 text-[11px] opacity-75">
+                  {status.scheduler.scrapeProgress.runId != null && (
+                    <span className="font-mono">#{status.scheduler.scrapeProgress.runId}</span>
+                  )}
+                  {status.scheduler.scrapeProgress.phase === "routine" &&
+                    status.scheduler.scrapeProgress.routineIndex != null &&
+                    status.scheduler.scrapeProgress.routinesTotal != null && (
+                      <span>
+                        Routine {status.scheduler.scrapeProgress.routineIndex}/
+                        {status.scheduler.scrapeProgress.routinesTotal}
+                      </span>
+                    )}
+                  {status.scheduler.scrapeProgress.phase === "details" &&
+                    status.scheduler.scrapeProgress.detailsTotal != null &&
+                    status.scheduler.scrapeProgress.detailsTotal > 0 && (
+                      <span>
+                        Details {status.scheduler.scrapeProgress.detailsIndex ?? 0}/
+                        {status.scheduler.scrapeProgress.detailsTotal}
+                      </span>
+                    )}
+                  {status.scheduler.scrapeProgress.listingsSeen != null &&
+                    status.scheduler.scrapeProgress.listingsSeen > 0 && (
+                      <span className="tabular-nums">
+                        {status.scheduler.scrapeProgress.listingsSeen} listings seen
+                      </span>
+                    )}
+                  {status.scheduler.scrapeProgress.engineName &&
+                    status.scheduler.scrapeProgress.phase === "routine" && (
+                      <span className="truncate">
+                        {status.scheduler.scrapeProgress.engineName}
+                        {status.scheduler.scrapeProgress.routineLabel
+                          ? ` · ${status.scheduler.scrapeProgress.routineLabel}`
+                          : ""}
+                      </span>
+                    )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -163,7 +245,7 @@ export function StatusPage() {
                   "Last scrape",
                   `${formatRelative(status.scheduler.lastScrapeAt)} · ${formatDateTime(status.scheduler.lastScrapeAt)}`,
                 ],
-                ["Notify", "After scrape (if findings)"],
+                ["Notify", "After scrape (if new listings)"],
                 [
                   "Last notify",
                   status.scheduler.lastNotifyAt
@@ -198,11 +280,14 @@ export function StatusPage() {
               <Activity className="h-4 w-4 text-muted-foreground" />
               Run summary
             </CardTitle>
-            <CardDescription>Last {status.runs.length} jobs</CardDescription>
+            <CardDescription>Last {status.runs.length} runs</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Badge variant="success">{successRuns} success</Badge>
             <Badge variant="destructive">{failedRuns} failed</Badge>
+            {incompleteRuns > 0 && (
+              <Badge variant="warning">{incompleteRuns} incomplete</Badge>
+            )}
             {running > 0 && <Badge variant="warning">{running} running</Badge>}
             <Badge variant="secondary">
               {[
@@ -219,45 +304,164 @@ export function StatusPage() {
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Recent runs</CardTitle>
-          <CardDescription>Newest first · auto-refreshed</CardDescription>
+          <CardDescription>
+            Latest 10 · expand a run for per-job counts · auto-refreshed
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-0 p-0">
           {status.runs.length === 0 ? (
             <p className="px-6 pb-6 text-sm text-muted-foreground">No runs yet</p>
           ) : (
             <ul className="divide-y divide-border/70">
-              {status.runs.map((run) => (
-                <li key={run.id} className="px-4 py-3 sm:px-6">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-muted-foreground">#{run.id}</span>
-                      <Badge
-                        variant={
-                          run.status === "done"
-                            ? "success"
-                            : run.status === "error"
-                              ? "destructive"
-                              : "warning"
-                        }
-                      >
-                        {run.status}
-                      </Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {formatRelative(run.startedAt)}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
-                    <span>{formatDateTime(run.startedAt)}</span>
-                    <span>
-                      {run.routinesTotal ?? "—"} routines · {run.listingsFound ?? "—"} new
-                    </span>
-                  </div>
-                  {run.error && (
-                    <p className="mt-1.5 line-clamp-2 text-xs text-destructive">{run.error}</p>
-                  )}
-                </li>
-              ))}
+              {status.runs.map((run) => {
+                const expanded = expandedRunId === run.id;
+                const jobs = jobsByRun[run.id];
+                const loadingJobs = jobsLoadingId === run.id;
+                const completeJobs = jobs?.filter((j) => j.complete).length;
+                const totalItems = jobs?.reduce((s, j) => s + (j.itemsSeen ?? 0), 0);
+
+                return (
+                  <li key={run.id} className="px-4 py-3 sm:px-6">
+                    <button
+                      type="button"
+                      onClick={() => toggleRun(run.id)}
+                      className="flex w-full items-start gap-2 text-left"
+                      aria-expanded={expanded}
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                          expanded && "rotate-180",
+                        )}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs text-muted-foreground">
+                              #{run.id}
+                            </span>
+                            <Badge
+                              variant={
+                                run.status === "done"
+                                  ? "success"
+                                  : run.status === "error"
+                                    ? "destructive"
+                                    : "warning"
+                              }
+                            >
+                              {run.status}
+                            </Badge>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {formatRelative(run.startedAt)}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                          <span>{formatDateTime(run.startedAt)}</span>
+                          <span>
+                            {run.routinesComplete ?? "—"}/{run.routinesTotal ?? "—"} jobs
+                            complete · {run.listingsFound ?? "—"} listings seen
+                            {run.sightingsCreated != null
+                              ? ` · ${run.sightingsCreated} changes`
+                              : ""}
+                          </span>
+                        </div>
+                        {run.error && (
+                          <p className="mt-1.5 line-clamp-2 text-xs text-destructive">
+                            {run.error}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+
+                    {expanded && (
+                      <div className="mt-3 ml-6 rounded-xl border border-border/70 bg-muted/30 p-3">
+                        {loadingJobs && !jobs ? (
+                          <p className="text-xs text-muted-foreground">Loading jobs…</p>
+                        ) : jobsError && !jobs ? (
+                          <p className="text-xs text-destructive">{jobsError}</p>
+                        ) : !jobs || jobs.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            No routine jobs recorded for this run.
+                          </p>
+                        ) : (
+                          <>
+                            <div className="mb-2 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                              <span>
+                                {jobs.length} job{jobs.length === 1 ? "" : "s"}
+                              </span>
+                              <span>·</span>
+                              <span>
+                                {completeJobs}/{jobs.length} complete
+                              </span>
+                              <span>·</span>
+                              <span className="tabular-nums">{totalItems} listings total</span>
+                            </div>
+                            <ul className="space-y-2">
+                              {jobs.map((job) => (
+                                <li
+                                  key={job.id}
+                                  className="rounded-lg border border-border/60 bg-card px-3 py-2"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <Badge
+                                        variant={job.complete ? "success" : "warning"}
+                                        className="shrink-0"
+                                      >
+                                        {job.complete ? "ok" : "incomplete"}
+                                      </Badge>
+                                      <span className="truncate text-xs font-medium">
+                                        {job.engineSlug === ITEM_DETAILS_JOB_SLUG
+                                          ? "Item details"
+                                          : job.engineSlug}
+                                        {job.label && job.engineSlug !== ITEM_DETAILS_JOB_SLUG ? (
+                                          <span className="font-normal text-muted-foreground">
+                                            {" "}
+                                            · {job.label}
+                                          </span>
+                                        ) : job.searchRoutineId != null ? (
+                                          <span className="font-normal text-muted-foreground">
+                                            {" "}
+                                            · routine #{job.searchRoutineId}
+                                          </span>
+                                        ) : null}
+                                      </span>
+                                    </div>
+                                    <span className="shrink-0 tabular-nums text-sm font-semibold">
+                                      {job.itemsSeen ?? 0}
+                                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                        {job.engineSlug === ITEM_DETAILS_JOB_SLUG
+                                          ? "scraped"
+                                          : "listings"}
+                                      </span>
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                                    <span className="tabular-nums">
+                                      pages {job.pagesFetched ?? 0}/{job.pagesPlanned ?? "—"}
+                                    </span>
+                                    {(job.pagesFailed ?? 0) > 0 && (
+                                      <span className="tabular-nums text-destructive">
+                                        {job.pagesFailed} failed
+                                      </span>
+                                    )}
+                                  </div>
+                                  {job.error && (
+                                    <p className="mt-1 line-clamp-2 text-[11px] text-destructive">
+                                      {job.error}
+                                    </p>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </CardContent>
