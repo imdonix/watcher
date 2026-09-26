@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { registerSW } from "virtual:pwa-register";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/hooks/use-auth";
+import { ThemeProvider, useTheme } from "@/hooks/use-theme";
 import { App } from "./App";
 import "./index.css";
 
@@ -50,20 +51,30 @@ const updateSW = registerSW({
   },
 });
 
+function AppToaster() {
+  const { theme } = useTheme();
+  return (
+    <Toaster
+      richColors
+      theme={theme}
+      position="top-center"
+      closeButton
+      toastOptions={{
+        className: "rounded-xl",
+      }}
+    />
+  );
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-        <Toaster
-          richColors
-          position="top-center"
-          closeButton
-          toastOptions={{
-            className: "rounded-xl",
-          }}
-        />
-      </AuthProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+          <AppToaster />
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>,
 );

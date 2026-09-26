@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Eye, EyeOff, KeyRound, Radar } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Moon, Radar, Sun } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Label } from "@/components/ui/label";
 
 export function LoginPage() {
   const { authenticated, loading, login } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
   const [token, setTokenValue] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +33,18 @@ export function LoginPage() {
 
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
-      <Card className="w-full max-w-sm border-border/80 shadow-xl shadow-primary/5">
+      <div className="absolute right-3 top-3 sm:right-4 sm:top-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 rounded-full"
+          onClick={toggleTheme}
+          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
+      </div>
+      <Card className="w-full max-w-sm border-border/80 shadow-card-hover">
         <CardHeader className="space-y-4 pb-2 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
             <Radar className="h-7 w-7" />

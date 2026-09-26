@@ -5,6 +5,7 @@ import {
   Ban,
   ExternalLink,
   Heart,
+  Image as ImageIcon,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -80,6 +81,7 @@ export function ListingDetailPage() {
   const [data, setData] = useState<ListingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -165,6 +167,9 @@ export function ListingDetailPage() {
     : listing.image
       ? [String(listing.image)]
       : [];
+  const markImageBroken = (src: string) =>
+    setBrokenImages((prev) => new Set(prev).add(src));
+  const heroSrc = gallery[0] && !brokenImages.has(gallery[0]) ? gallery[0] : null;
 
   return (
     <div className="space-y-5">
@@ -178,12 +183,17 @@ export function ListingDetailPage() {
       {/* Hero card */}
       <Card className={cn("overflow-hidden border-border/80 shadow-sm", unavailable && "opacity-95")}>
         {gallery[0] && (
-          <div className="aspect-[16/10] max-h-64 overflow-hidden bg-muted sm:aspect-[2.4/1] sm:max-h-72">
-            <img
-              src={gallery[0]}
-              alt=""
-              className="h-full w-full object-cover"
-            />
+          <div className="flex aspect-[16/10] max-h-64 items-center justify-center overflow-hidden bg-muted sm:aspect-[2.4/1] sm:max-h-72">
+            {heroSrc ? (
+              <img
+                src={heroSrc}
+                alt=""
+                className="h-full w-full object-cover"
+                onError={() => markImageBroken(heroSrc)}
+              />
+            ) : (
+              <ImageIcon className="h-10 w-10 text-muted-foreground/40" aria-hidden />
+            )}
           </div>
         )}
         <CardHeader className="space-y-3 p-4 sm:p-6">
@@ -320,9 +330,22 @@ export function ListingDetailPage() {
                           href={src}
                           target="_blank"
                           rel="noreferrer"
-                          className="aspect-square overflow-hidden rounded-lg border border-border/60 bg-muted"
+                          className="flex aspect-square items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-muted"
                         >
-                          <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
+                          {brokenImages.has(src) ? (
+                            <ImageIcon
+                              className="h-5 w-5 text-muted-foreground/40"
+                              aria-hidden
+                            />
+                          ) : (
+                            <img
+                              src={src}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                              onError={() => markImageBroken(src)}
+                            />
+                          )}
                         </a>
                       ))}
                     </div>
