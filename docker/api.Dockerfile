@@ -6,7 +6,7 @@
 # ── manifests: every workspace package.json, nothing else ────────────────────
 # Auto-discovers packages/* and apps/* so we never list each manifest by hand.
 # BuildKit content-hashes this stage → bun install stays cached until deps change.
-FROM oven/bun:1.2-debian AS manifests
+FROM oven/bun:1.4.2-debian AS manifests
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages ./packages
@@ -17,7 +17,7 @@ RUN find packages apps -type d -name node_modules -prune -exec rm -rf {} + 2>/de
     true
 
 # ── deps: install only this app's workspace graph ────────────────────────────
-FROM oven/bun:1.2-debian AS deps
+FROM oven/bun:1.4.2-debian AS deps
 WORKDIR /app
 COPY --from=manifests /app ./
 # --filter: skip web/scraper trees
@@ -26,7 +26,7 @@ COPY --from=manifests /app ./
 RUN bun install --frozen-lockfile --filter @watcher/api --linker=hoisted --production
 
 # ── runtime ──────────────────────────────────────────────────────────────────
-FROM oven/bun:1.2-debian
+FROM oven/bun:1.4.2-debian
 WORKDIR /app
 ENV NODE_ENV=production
 

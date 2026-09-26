@@ -4,7 +4,7 @@
 #   docker build -f docker/scraper.Dockerfile -t watcher-scraper .
 
 # ── manifests: every workspace package.json, nothing else ────────────────────
-FROM oven/bun:1.2-debian AS manifests
+FROM oven/bun:1.4.2-debian AS manifests
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages ./packages
@@ -15,14 +15,14 @@ RUN find packages apps -type d -name node_modules -prune -exec rm -rf {} + 2>/de
     true
 
 # ── deps: only scraper workspace graph ───────────────────────────────────────
-FROM oven/bun:1.2-debian AS deps
+FROM oven/bun:1.4.2-debian AS deps
 WORKDIR /app
 COPY --from=manifests /app ./
 # ignore-scripts: postinstall would pull browsers before OS libs are ready
 RUN bun install --frozen-lockfile --filter @watcher/scraper --linker=hoisted --production --ignore-scripts
 
 # ── runtime ──────────────────────────────────────────────────────────────────
-FROM oven/bun:1.2-debian
+FROM oven/bun:1.4.2-debian
 WORKDIR /app
 ENV NODE_ENV=production
 ENV HEADLESS=true
