@@ -5,15 +5,17 @@ import {
   BellRing,
   LayoutList,
   LogOut,
+  Moon,
   MoreHorizontal,
-  Radar,
   RefreshCw,
   Settings,
   Settings2,
+  Sun,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/hooks/use-theme";
 import { api } from "@/lib/api";
 import {
   disablePushNotifications,
@@ -39,20 +41,11 @@ const nav = [
   { to: "/status", label: "Status", icon: Activity, match: /^\/status/ },
 ] as const;
 
-function pageTitle(pathname: string): string {
-  if (pathname.startsWith("/listings/") && pathname !== "/listings") return "Listing";
-  if (pathname.startsWith("/listings")) return "Listings";
-  if (pathname.startsWith("/routines")) return "Routines";
-  if (pathname.startsWith("/status")) return "Status";
-  if (pathname.startsWith("/settings")) return "Settings";
-  return "Watcher";
-}
-
 export function AppLayout() {
   const { logout } = useAuth();
+  const { theme, toggle: toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
-  const title = useMemo(() => pageTitle(location.pathname), [location.pathname]);
   const isDetail = /^\/listings\/.+/.test(location.pathname);
   const onSettings = location.pathname.startsWith("/settings");
 
@@ -112,51 +105,127 @@ export function AppLayout() {
     }
   }
 
+  const themeButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-9 w-9"
+      onClick={toggleTheme}
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      title={theme === "dark" ? "Light mode" : "Dark mode"}
+    >
+      {theme === "dark" ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
+    </Button>
+  );
+
   return (
     <div className="min-h-dvh">
-      {/* Compact sticky top bar — brand + primary action + overflow */}
+      {/* Desktop sidebar */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border/60 bg-card/60 backdrop-blur-xl lg:flex">
+        <div className="flex h-16 items-center px-4">
+          <NavLink
+            to="/listings"
+            className="truncate text-[15px] font-semibold tracking-tight transition-colors hover:text-primary"
+          >
+            Watcher
+          </NavLink>
+        </div>
+
+        <nav className="flex-1 space-y-1 px-3 py-2" aria-label="Primary">
+          {nav.map(({ to, label, icon: Icon, match }) => {
+            const active = match.test(location.pathname);
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )}
+              >
+                <Icon className={cn("h-4.5 w-4.5", active && "text-primary")} />
+                {label}
+              </NavLink>
+            );
+          })}
+          <NavLink
+            to="/settings"
+            className={cn(
+              "mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+              onSettings
+                ? "bg-secondary text-secondary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Settings className={cn("h-4.5 w-4.5", onSettings && "text-primary")} />
+            Settings
+          </NavLink>
+        </nav>
+
+        <div className="space-y-2 border-t border-border/60 p-3">
+          <Button
+            className="w-full"
+            onClick={() => void doScrap()}
+            disabled={scraping}
+            aria-label="Run scrape now"
+          >
+            <RefreshCw className={cn("h-4 w-4", scraping && "animate-spin")} />
+            {scraping ? "Scraping…" : "Scrape now"}
+          </Button>
+
+          <div className="flex items-center gap-1">
+            {isPushSupported() && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                disabled={pushBusy}
+                onClick={() => void togglePush()}
+                aria-label={pushOn ? "Disable push notifications" : "Enable push notifications"}
+                title={pushOn ? "Push on" : "Push off"}
+              >
+                {pushOn ? <BellRing className="h-4.5 w-4.5" /> : <BellOff className="h-4.5 w-4.5" />}
+              </Button>
+            )}
+            {themeButton}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ml-auto h-9 w-9"
+              onClick={() => logout()}
+              aria-label="Log out"
+              title="Log out"
+            >
+              <LogOut className="h-4.5 w-4.5" />
+            </Button>
+          </div>
+
+          <p className="flex items-center gap-1.5 truncate px-1 text-[11px] text-muted-foreground">
+            <span
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                scraperUp === true ? "bg-emerald-500" : "bg-amber-500",
+              )}
+            />
+            Scraper {scraperUp === true ? "up" : scraperUp === false ? "down" : "unknown"}
+          </p>
+        </div>
+      </aside>
+
+      {/* Compact sticky top bar (mobile + tablet) */}
       <header
-        className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70"
+        className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 lg:hidden"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <div className="mx-auto flex h-14 max-w-5xl items-center gap-2 px-3 sm:px-4">
-          <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm shadow-primary/20">
-              <Radar className="h-4 w-4" />
-              {scraperUp === false && (
-                <span
-                  className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-amber-500"
-                  title="Scraper down"
-                />
-              )}
-            </div>
-
-            {/* Mobile: contextual page title. Desktop: brand + inline nav */}
-            <div className="min-w-0 sm:hidden">
-              <p className="truncate text-[15px] font-semibold tracking-tight">{title}</p>
-            </div>
-            <div className="hidden min-w-0 items-center gap-4 sm:flex">
-              <span className="text-[15px] font-semibold tracking-tight">Watcher</span>
-              <nav className="flex items-center gap-0.5">
-                {nav.map(({ to, label, match }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    className={() =>
-                      cn(
-                        "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-                        match.test(location.pathname)
-                          ? "bg-secondary text-secondary-foreground"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                      )
-                    }
-                  >
-                    {label}
-                  </NavLink>
-                ))}
-              </nav>
-            </div>
-          </div>
+        <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
+          <NavLink
+            to="/listings"
+            className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight transition-colors hover:text-primary"
+          >
+            Watcher
+          </NavLink>
 
           <div className="flex shrink-0 items-center gap-1">
             <Button
@@ -190,6 +259,10 @@ export function AppLayout() {
                 >
                   <Settings />
                   <span className="flex-1">System settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={toggleTheme}>
+                  {theme === "dark" ? <Sun /> : <Moon />}
+                  <span className="flex-1">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
                 </DropdownMenuItem>
                 {isPushSupported() && (
                   <DropdownMenuItem
@@ -236,21 +309,24 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main
-        className={cn(
-          "mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6",
-          // room for bottom nav + safe area; less padding on detail (has its own sticky bar)
-          isDetail
-            ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:pb-8"
-            : "pb-[calc(5rem+env(safe-area-inset-bottom))] sm:pb-8",
-        )}
-      >
-        <Outlet />
-      </main>
+      {/* Page shell — offset by sidebar on desktop */}
+      <div className="lg:pl-60">
+        <main
+          className={cn(
+            "mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6",
+            // room for bottom nav + safe area; less padding on detail (has its own sticky bar)
+            isDetail
+              ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-8"
+              : "pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8",
+          )}
+        >
+          <Outlet />
+        </main>
+      </div>
 
-      {/* Mobile bottom nav */}
+      {/* Bottom nav (mobile + tablet) */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 backdrop-blur-xl sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 backdrop-blur-xl lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="Primary"
       >
@@ -271,6 +347,16 @@ export function AppLayout() {
               </NavLink>
             );
           })}
+          <NavLink
+            to="/settings"
+            className={cn(
+              "flex min-h-[3.5rem] flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors",
+              onSettings ? "text-primary" : "text-muted-foreground active:bg-muted/50",
+            )}
+          >
+            <Settings className={cn("h-5 w-5", onSettings && "stroke-[2.25px]")} />
+            Settings
+          </NavLink>
         </div>
       </nav>
     </div>

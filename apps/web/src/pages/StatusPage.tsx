@@ -225,15 +225,44 @@ export function StatusPage() {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="border-border/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Clock className="h-4 w-4 text-muted-foreground" />
-              Schedule
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-0">
+      {/* Run stats — scannable tiles */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatTile
+          label="Successful"
+          value={successRuns}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          tone="text-emerald-600 dark:text-emerald-400"
+        />
+        <StatTile
+          label="Failed"
+          value={failedRuns}
+          icon={<XCircle className="h-4 w-4" />}
+          tone={failedRuns > 0 ? "text-destructive" : "text-muted-foreground"}
+        />
+        <StatTile
+          label="Incomplete"
+          value={incompleteRuns}
+          icon={<Clock className="h-4 w-4" />}
+          tone={incompleteRuns > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}
+        />
+        <StatTile
+          label="Running"
+          value={running}
+          icon={<Activity className="h-4 w-4" />}
+          tone={running > 0 ? "text-primary animate-pulse" : "text-muted-foreground"}
+          hint={`last ${status.runs.length} runs`}
+        />
+      </div>
+
+      <Card className="border-border/80 shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            Schedule
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-x-8 sm:grid-cols-2">
             {(
               [
                 ["Interval", `every ${status.scheduler.scrapIntervalMinutes} min`],
@@ -252,54 +281,34 @@ export function StatusPage() {
                     ? `${formatRelative(status.scheduler.lastNotifyAt)} · ${formatDateTime(status.scheduler.lastNotifyAt)}`
                     : "—",
                 ],
+                [
+                  "Transports",
+                  [
+                    status.transports.logger && "log",
+                    status.transports.push && "push",
+                  ]
+                    .filter(Boolean)
+                    .join(" + ") || "none",
+                ],
               ] as const
-            ).map(([label, value], i, arr) => (
+            ).map(([label, value]) => (
               <div
                 key={label}
-                className={cn(
-                  "flex items-start justify-between gap-4 py-2.5 text-sm",
-                  i < arr.length - 1 && "border-b border-border/60",
-                )}
+                className="flex items-start justify-between gap-4 border-b border-border/60 py-2.5 text-sm"
               >
                 <span className="shrink-0 text-muted-foreground">{label}</span>
                 <span className="text-right font-medium leading-snug">{value}</span>
               </div>
             ))}
-            <p className="border-t border-border/60 pt-3 text-xs text-muted-foreground">
-              Up since {formatDateTime(status.scheduler.scraperStartedAt)} ·{" "}
-              {status.pushSubscribers} push subscriber
-              {status.pushSubscribers === 1 ? "" : "s"}
-              {status.scheduler.scrapeInProgress ? " · scrape running" : ""}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/80 shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              Run summary
-            </CardTitle>
-            <CardDescription>Last {status.runs.length} runs</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Badge variant="success">{successRuns} success</Badge>
-            <Badge variant="destructive">{failedRuns} failed</Badge>
-            {incompleteRuns > 0 && (
-              <Badge variant="warning">{incompleteRuns} incomplete</Badge>
-            )}
-            {running > 0 && <Badge variant="warning">{running} running</Badge>}
-            <Badge variant="secondary">
-              {[
-                status.transports.logger && "log",
-                status.transports.push && "push",
-              ]
-                .filter(Boolean)
-                .join(" + ") || "no transports"}
-            </Badge>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+          <p className="pt-3 text-xs text-muted-foreground">
+            Up since {formatDateTime(status.scheduler.scraperStartedAt)} ·{" "}
+            {status.pushSubscribers} push subscriber
+            {status.pushSubscribers === 1 ? "" : "s"}
+            {status.scheduler.scrapeInProgress ? " · scrape running" : ""}
+          </p>
+        </CardContent>
+      </Card>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
@@ -466,6 +475,35 @@ export function StatusPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  icon,
+  tone,
+  hint,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  tone: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/80 bg-card p-3 shadow-sm sm:p-4">
+      <div className="flex items-center gap-1.5">
+        <span className={cn("[&_svg]:h-4 [&_svg]:w-4", tone)}>{icon}</span>
+        <span className="truncate text-xs font-medium capitalize text-muted-foreground">
+          {label}
+        </span>
+      </div>
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums tracking-tight sm:text-3xl">
+        {value}
+      </p>
+      {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
