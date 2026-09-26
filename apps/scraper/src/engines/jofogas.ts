@@ -16,11 +16,68 @@ import { log } from "../lib/log";
  * Extract ads from both:
  * - modern MUI cards on www.jofogas.hu
  * - real-estate list items on ingatlan.jofogas.hu (.list-item / .price-value)
+ *
+ * NOTE: everything inside page.evaluate() is serialized into the browser —
+ * helpers used there must be declared inside the evaluate callback.
  */
 async function extractItems(page: Page): Promise<Array<Record<string, unknown>>> {
   return page.evaluate(() => {
     const results: Array<Record<string, unknown>> = [];
     const seen = new Set<string>();
+
+    /** True when the text is a bare money amount (with or without a currency suffix). */
+    const isAmountLike = (t: string): boolean =>
+      /^[\d][\d\s.,]*$/.test(t) || /^[\d][\d\s.,]*\s*(Ft|HUF|€|EUR)$/i.test(t);
+
+    /**
+     * Extract the price from a modern MUI ad card.
+     *
+     * Jófogás moved the price out of the headings: the card title now lives in
+     * <h2> while the amount is a separate <p class="MuiTypography-h3">75 000</p>
+     * followed by <p>Ft</p>. Reading the heading as a price yields the title's
+     * digits (e.g. "iphone 13 …" → 13128), which then gets dropped by the
+     * routine's min/max price filter — so always validate the candidate.
+     */
+    const pickCardPrice = (root: HTMLElement): string | null => {
+      for (const sel of [
+        "[data-testid='ad-price']",
+        "p.MuiTypography-h3",
+        "p.MuiTypography-h4",
+        ".price-value",
+        "[itemprop='price']",
+        "h2.MuiTypography-h2",
+      ]) {
+        for (const node of Array.from(root.querySelectorAll(sel))) {
+          const t = (node.textContent || "").replace(/\s+/g, " ").trim();
+          if (!isAmountLike(t)) continue;
+          if (/(Ft|HUF|€|EUR)/i.test(t)) return t;
+          // bare amount → only trust it when a currency marker sits nearby
+          const near = `${node.parentElement?.textContent || ""} ${node.nextElementSibling?.textContent || ""}`;
+          if (/(Ft|HUF|€|EUR)/i.test(near)) return `${t} Ft`;
+        }
+      }
+
+      // Generic: leaf holding only digits with a currency sibling/parent
+      for (const node of Array.from(root.querySelectorAll("*"))) {
+        if (node.children.length) continue;
+        const t = (node.textContent || "").replace(/\s+/g, " ").trim();
+        if (!/^[\d][\d\s.,]*$/.test(t)) continue;
+        const near = `${node.parentElement?.textContent || ""} ${node.nextElementSibling?.textContent || ""}`;
+        if (/(Ft|HUF|€|EUR)/i.test(near)) return `${t} Ft`;
+      }
+
+      // Text layout: amount line directly followed by a "Ft" line
+      const lines = (root.innerText || "")
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (let i = 0; i < lines.length - 1; i++) {
+        if (/^[\d][\d\s.,]*$/.test(lines[i]) && /^(Ft|HUF|€|EUR)$/i.test(lines[i + 1])) {
+          return `${lines[i]} Ft`;
+        }
+      }
+      return null;
+    };
 
     function push(item: {
       rawId: string;
@@ -49,10 +106,23 @@ async function extractItems(page: Page): Promise<Array<Record<string, unknown>>>
         if (!url) continue;
         if (!/\.htm/i.test(url) && !/hirdetes/i.test(url)) continue;
 
-        const titleEl = root.querySelector(
-          "h5.MuiTypography-h5, h5, [data-testid='ad-title']",
-        );
-        let name = titleEl?.textContent?.trim() || "";
+        // Title: current layout uses <h2> (MuiTypography-h4); older used h5.
+        // Skip amount-like headings (older layouts kept the price in <h2>).
+        let name = "";
+        for (const sel of [
+          "[data-testid='ad-title']",
+          "h2.MuiTypography-h4",
+          "h5.MuiTypography-h5, h5",
+          "h2",
+        ]) {
+          for (const node of Array.from(root.querySelectorAll(sel))) {
+            const t = (node.textContent || "").replace(/\s+/g, " ").trim();
+            if (!t || isAmountLike(t)) continue;
+            name = t;
+            break;
+          }
+          if (name) break;
+        }
         if (!name) {
           name =
             (root.innerText || "")
@@ -61,12 +131,7 @@ async function extractItems(page: Page): Promise<Array<Record<string, unknown>>>
               .find((s) => s.length > 8 && !/^\d/.test(s)) || "";
         }
 
-        const priceH2 = root.querySelector("h2.MuiTypography-h2, h2");
-        let priceText: string | null = null;
-        if (priceH2?.textContent?.trim()) {
-          const t = priceH2.textContent.trim();
-          priceText = /Ft|€|HUF/i.test(t) ? t : `${t} Ft`;
-        }
+        const priceText = pickCardPrice(root);
 
         const imgEl = root.querySelector("img") as HTMLImageElement | null;
         const img = imgEl?.src || imgEl?.getAttribute("data-src") || null;
@@ -272,6 +337,32 @@ async function nextPageUrl(page: Page, currentUrl: string): Promise<string | nul
     const relNext = document.querySelector("a[rel='next']") as HTMLAnchorElement | null;
     if (relNext?.href) return { href: relNext.href, via: "rel-next" };
 
+    // MUI pagination renders <button> items (no href) and navigates to ?o=N
+    const muiPager = document.querySelector(
+      '[data-testid="pagination"], .MuiPagination-root',
+    );
+    if (muiPager) {
+      const prevNext = Array.from(
+        muiPager.querySelectorAll<HTMLButtonElement>("button.MuiPaginationItem-previousNext"),
+      );
+      const nextBtn = prevNext[prevNext.length - 1];
+      const selected = muiPager.querySelector(
+        ".MuiPaginationItem-page.Mui-selected",
+      ) as HTMLElement | null;
+      const current = Number((selected?.textContent || "").trim()) || 1;
+      if (nextBtn && !nextBtn.disabled) {
+        try {
+          const u = new URL(location.href);
+          u.searchParams.set("o", String(current + 1));
+          return { href: u.toString(), via: `mui-button-o=${current + 1}` };
+        } catch {
+          /* fall through */
+        }
+      }
+      // Pager present but next disabled → last page
+      return { href: null, via: "mui-no-next" };
+    }
+
     const muiActive = document.querySelector(
       ".MuiPaginationItem-page.Mui-selected, .Mui-selected[aria-current='true']",
     );
@@ -336,6 +427,11 @@ function parseJofogasPrice(text: string | null | undefined): number | null {
     const n = Number(t);
     return Number.isFinite(n) && n > 0 ? n : null;
   }
+
+  // Reject letter-heavy text (e.g. a title accidentally fed in as price):
+  // only currency codes may remain after stripping digits/separators.
+  const letters = t.replace(/[\d\s.,/]+/g, "").replace(/\b(Ft|HUF|EUR|€)\b/gi, "");
+  if (/[^\W\d_]/i.test(letters)) return null;
 
   // Never treat m² rates as listing price
   if (/Ft\s*\/\s*m/i.test(t) && !/Ft(?!\s*\/\s*m)/i.test(t.replace(/Ft\s*\/\s*m[²2]?/gi, ""))) {
@@ -412,6 +508,30 @@ async function scrapeJofogasItem(page: Page, url: string): Promise<EngineItemScr
     const text = (el: Element | null | undefined) =>
       el?.textContent?.replace(/\s+/g, " ").trim() || "";
 
+    // ── JSON-LD: flatten @graph / mainEntity / offers into one node list ──
+    const jsonLdNodes: Array<Record<string, unknown>> = [];
+    for (const script of Array.from(
+      document.querySelectorAll('script[type="application/ld+json"]'),
+    )) {
+      try {
+        const data = JSON.parse(script.textContent || "null") as unknown;
+        const stack: unknown[] = Array.isArray(data) ? [...data] : [data];
+        while (stack.length) {
+          const n = stack.shift();
+          if (!n || typeof n !== "object") continue;
+          const o = n as Record<string, unknown>;
+          jsonLdNodes.push(o);
+          for (const key of ["@graph", "mainEntity", "offers", "itemListElement"]) {
+            const v = o[key];
+            if (Array.isArray(v)) stack.push(...v);
+            else if (v && typeof v === "object") stack.push(v);
+          }
+        }
+      } catch {
+        /* ignore malformed JSON-LD */
+      }
+    }
+
     /**
      * Preserve line breaks from the ad body.
      * Prefer innerText (layout-aware). Convert <br> and block tags to newlines
@@ -456,14 +576,35 @@ async function scrapeJofogasItem(page: Page, url: string): Promise<EngineItemScr
       "";
 
     const priceText =
-      text(document.querySelector("[data-testid='ad-price'], .price-value, h2.MuiTypography-h2")) ||
+      text(
+        document.querySelector(
+          "[data-testid='ad-price'], [data-testid='ad-view-info-price'], .price-value",
+        ),
+      ) ||
+      text(document.querySelector("h2.MuiTypography-h2")) ||
       text(document.querySelector(".priceBox .price-value, [itemprop='price']")) ||
+      (() => {
+        for (const node of jsonLdNodes) {
+          const offers = node.offers;
+          const list = Array.isArray(offers) ? offers : offers ? [offers] : [];
+          for (const o of list) {
+            if (!o || typeof o !== "object") continue;
+            const p = (o as Record<string, unknown>).price;
+            if (typeof p === "string" || typeof p === "number") return String(p);
+          }
+          if (typeof node.price === "string" || typeof node.price === "number") {
+            return String(node.price);
+          }
+        }
+        return "";
+      })() ||
       null;
 
     // ── Description: prefer dedicated ad body, never whole-page fallback ──
     const DESC_SELECTORS = [
       "[data-testid='ad-description']",
       "[data-testid='ad-body']",
+      "[data-testid='real-estate-product-description-collapse']",
       "#ad-description",
       ".advert-description",
       ".item-description",
@@ -490,26 +631,18 @@ async function scrapeJofogasItem(page: Page, url: string): Promise<EngineItemScr
       }
     }
 
-    // JSON-LD Product/Offer description (often clean, but may be single line)
+    // JSON-LD Product/Offer description (often clean, but may be single line
+    // and may contain literal <br> HTML)
     if (!description) {
-      for (const script of Array.from(
-        document.querySelectorAll('script[type="application/ld+json"]'),
-      )) {
-        try {
-          const data = JSON.parse(script.textContent || "null") as unknown;
-          const nodes = Array.isArray(data) ? data : [data];
-          for (const node of nodes) {
-            if (!node || typeof node !== "object") continue;
-            const o = node as Record<string, unknown>;
-            const d = o.description;
-            if (typeof d === "string" && d.trim().length >= 8) {
-              description = d.trim();
-              break;
-            }
-          }
-          if (description) break;
-        } catch {
-          /* ignore */
+      for (const node of jsonLdNodes) {
+        const d = node.description;
+        if (typeof d === "string" && d.trim().length >= 8) {
+          description = d
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<\/p>\s*<p>/gi, "\n\n")
+            .replace(/<[^>]+>/g, "")
+            .trim();
+          break;
         }
       }
     }
@@ -546,6 +679,26 @@ async function scrapeJofogasItem(page: Page, url: string): Promise<EngineItemScr
             break;
           }
         }
+        // MUI layout: the "Leírás" heading is isolated in its own div and the
+        // body text lives in a sibling div of the heading's container.
+        let host: Element | null = parent;
+        for (let i = 0; i < 3 && host; i++) {
+          host = host.parentElement;
+          if (!host || inFooterOrNav(host)) break;
+          let sib: Element | null = host.firstElementChild;
+          while (sib) {
+            if (sib !== h && !inFooterOrNav(sib) && !/le[ií]r[aá]s|description/i.test(text(sib))) {
+              const t = blockText(sib);
+              if (t.length >= 8) {
+                description = t;
+                break;
+              }
+            }
+            sib = sib.nextElementSibling;
+          }
+          if (description) break;
+        }
+        if (description) break;
       }
     }
 
@@ -565,6 +718,21 @@ async function scrapeJofogasItem(page: Page, url: string): Promise<EngineItemScr
     }
 
     const attributes: Record<string, string> = {};
+    // MUI layout: <div data-testid="param_..."> <span>Márka:</span> <div><span><span>Apple</span>
+    // The value span nests its own <span>, so raw collection yields "Apple Apple" —
+    // take the label as the first span and the de-duplicated remainder as value.
+    for (const row of Array.from(
+      document.querySelectorAll("[data-testid^='param_'], [data-testid*='param']"),
+    )) {
+      if (inFooterOrNav(row)) continue;
+      const spans = Array.from(row.querySelectorAll("span")).map((s) => text(s)).filter(Boolean);
+      if (spans.length >= 2) {
+        const k = spans[0].replace(/[:：]\s*$/, "");
+        const rest = spans.slice(1);
+        const v = rest.filter((x, i) => rest.indexOf(x) === i).join(" ");
+        if (k && v && k.length < 80 && v.length < 200) attributes[k] = v;
+      }
+    }
     for (const row of Array.from(
       document.querySelectorAll(
         "table tr, .parameter-row, [data-testid*='param'] li, dl > div, .reParam, .param-group",
@@ -586,31 +754,109 @@ async function scrapeJofogasItem(page: Page, url: string): Promise<EngineItemScr
       const v = text(dt.nextElementSibling);
       if (k && v) attributes[k] = v;
     }
+    // JSON-LD additionalProperty fallback
+    for (const node of jsonLdNodes) {
+      const props = node.additionalProperty;
+      const list = Array.isArray(props) ? props : props ? [props] : [];
+      for (const p of list) {
+        if (!p || typeof p !== "object") continue;
+        const o = p as Record<string, unknown>;
+        const k = typeof o.name === "string" ? o.name : "";
+        const v =
+          typeof o.value === "string"
+            ? o.value
+            : typeof o.value === "number"
+              ? String(o.value)
+              : "";
+        if (k && v && !attributes[k]) attributes[k] = v;
+      }
+    }
 
-    const location =
-      text(document.querySelector("[data-testid='ad-location'], .advert-location, .location")) ||
-      attributes["Helyszín"] ||
-      attributes["Település"] ||
-      null;
+    const location = (() => {
+      // MUI info card: the smallest node starting with "Cím:" holds
+      // "Csongrád-Csanád; Szeged" (larger ancestors mix in categories).
+      let best = "";
+      for (const el of Array.from(document.querySelectorAll("main *"))) {
+        const t = (el.textContent || "").replace(/\s+/g, " ").trim();
+        if (!/^C[íi]m\s*:/i.test(t) || t.length > 150) continue;
+        const v = t
+          .replace(/^C[íi]m\s*:\s*/i, "")
+          .replace(/Kateg[óo]ria.*$/i, "")
+          .trim();
+        if (!v) continue;
+        if (!best || t.length < best.length) best = t;
+      }
+      if (best) {
+        const v = best
+          .replace(/^C[íi]m\s*:\s*/i, "")
+          .replace(/Kateg[óo]ria.*$/i, "")
+          .replace(/;\s*/g, ", ")
+          .trim();
+        if (v) return v;
+      }
+
+      const crumbs = document.querySelector("[data-testid='viMapBreadcrumb']");
+      const c = (crumbs?.textContent || "").replace(/\s+/g, " ").trim();
+      if (c) return c;
+
+      return attributes["Helyszín"] || attributes["Település"] || null;
+    })();
 
     const images: string[] = [];
     const seen = new Set<string>();
+    const seenKeys = new Set<string>();
+    const pushImg = (src: null | undefined | string) => {
+      if (!src || images.length >= 12) return;
+      if (src.startsWith("data:")) return;
+      // Drop chrome: logos/icons/svgs, app-store & social art, OSM map tiles, ad banners
+      if (/\/assets\/|\.(svg|gif)(\?|$)/i.test(src)) return;
+      if (/logo|icon|avatar|sprite/i.test(src)) return;
+      if (/osm\.jofogas|adverticum|doubleclick|googlesyndication/i.test(src)) return;
+      if (seen.has(src)) return;
+      // Same photo served from different crops (hdimages vs bigthumbs)
+      const key = src.split("/").pop() || src;
+      if (seenKeys.has(key)) return;
+      seen.add(src);
+      seenKeys.add(key);
+      images.push(src);
+    };
+
+    // JSON-LD Product.image is the authoritative gallery (hdimages)
+    for (const node of jsonLdNodes) {
+      const img = node.image;
+      if (typeof img === "string") pushImg(img);
+      else if (Array.isArray(img)) {
+        for (const i of img) {
+          if (typeof i === "string") pushImg(i);
+          else if (i && typeof i === "object") {
+            const o = i as Record<string, unknown>;
+            pushImg((o.url || o.contentUrl) as string | undefined);
+          }
+        }
+      } else if (img && typeof img === "object") {
+        const o = img as Record<string, unknown>;
+        pushImg((o.url || o.contentUrl) as string | undefined);
+      }
+    }
+
     for (const img of Array.from(
       document.querySelectorAll<HTMLImageElement>(
         "img[src*='jofogas'], .gallery img, [data-testid*='gallery'] img, .carousel img, main img",
       ),
     )) {
       if (inFooterOrNav(img)) continue;
+      // Suggested/"similar ads" carousels are not part of this listing
+      if (img.closest("[data-testid='suggested-ads-slider'], .similar-ads")) continue;
       const src = img.currentSrc || img.src || img.getAttribute("data-src") || "";
-      if (!src || src.startsWith("data:") || /logo|icon|avatar|sprite/i.test(src)) continue;
-      if (seen.has(src)) continue;
-      seen.add(src);
-      images.push(src);
-      if (images.length >= 12) break;
+      pushImg(src);
     }
 
     const seller =
-      text(document.querySelector("[data-testid='seller-name'], .seller-name, .advertiser-name")) ||
+      text(
+        document.querySelector(
+          "[data-testid='contact-box-user-name'], [data-testid='seller-name'], .seller-name, .advertiser-name",
+        ),
+      ) ||
       null;
 
     return { name, priceText, description, attributes, location, images, seller };
