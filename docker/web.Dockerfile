@@ -4,7 +4,7 @@
 #   docker build -f docker/web.Dockerfile -t watcher-web .
 
 # ── manifests: every workspace package.json, nothing else ────────────────────
-FROM oven/bun:1.2-debian AS manifests
+FROM oven/bun:1.4.2-debian AS manifests
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages ./packages
@@ -15,7 +15,7 @@ RUN find packages apps -type d -name node_modules -prune -exec rm -rf {} + 2>/de
     true
 
 # ── build: need devDependencies (vite, typescript, …) ────────────────────────
-FROM oven/bun:1.2-debian AS build
+FROM oven/bun:1.4.2-debian AS build
 WORKDIR /app
 COPY --from=manifests /app ./
 RUN bun install --frozen-lockfile --filter @watcher/web --linker=hoisted
