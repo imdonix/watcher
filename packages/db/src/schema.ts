@@ -6,6 +6,7 @@ import {
   jsonb,
   pgTable,
   serial,
+  smallint,
   text,
   timestamp,
   varchar,
@@ -56,6 +57,11 @@ export const listings = pgTable("listings", {
   firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
   lastPrice: integer("last_price"),
+  /** Price before the most recent change (read cache; listing_events is truth) */
+  prevPrice: integer("prev_price"),
+  priceChangedAt: timestamp("price_changed_at", { withTimezone: true }),
+  /** Alert when the price drops to or below this value (null = no target) */
+  targetPrice: integer("target_price"),
   lastData: jsonb("last_data").$type<Record<string, unknown>>().notNull().default({}),
   /**
    * Engine-specific payload from a one-time item-page scrape
@@ -64,8 +70,10 @@ export const listings = pgTable("listings", {
   details: jsonb("details").$type<Record<string, unknown> | null>(),
   /** Set after a completed detail attempt (success or fail) — never re-scraped. */
   detailsScrapedAt: timestamp("details_scraped_at", { withTimezone: true }),
-  /** AI evaluation verdict: pass | fail (null = not evaluated) */
+  /** AI evaluation verdict: pass | fail (null = not evaluated) — derived from aiScore >= threshold */
   aiVerdict: varchar("ai_verdict", { length: 16 }),
+  /** AI relevance score 0-100 (null = not evaluated) */
+  aiScore: smallint("ai_score"),
   /** Short human reason from the evaluation model */
   aiReason: text("ai_reason"),
   /** Model that produced the verdict */

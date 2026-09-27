@@ -110,11 +110,18 @@ export interface ItemView {
   sightingCount?: number;
   sent?: boolean;
   found?: string;
-  /** AI evaluation verdict (null / absent = not evaluated yet) */
+  /** AI evaluation verdict (null / absent = not evaluated yet) — derived from aiScore >= threshold */
   aiVerdict?: "pass" | "fail" | null;
+  /** AI relevance score 0-100 (null / absent = not evaluated yet) */
+  aiScore?: number | null;
   aiReason?: string | null;
   aiModel?: string | null;
   aiEvaluatedAt?: string | null;
+  /** Price before the most recent change (absent when never changed) */
+  prevPrice?: number | null;
+  priceChangedAt?: string | null;
+  /** Alert threshold set by the user (null = none) */
+  targetPrice?: number | null;
   [key: string]: unknown;
 }
 
@@ -239,7 +246,12 @@ export interface StatusResponse {
   pushSubscribers: number;
 }
 
-export type ListingEventKind = "first_seen" | "price_change" | "missing" | "reappeared";
+export type ListingEventKind =
+  | "first_seen"
+  | "price_change"
+  | "target_hit"
+  | "missing"
+  | "reappeared";
 
 /** System settings (persisted in `settings` table). */
 export interface SystemSettings {
@@ -253,4 +265,6 @@ export interface SystemSettings {
   aiBaseUrl: string;
   aiApiKey: string;
   aiModel: string;
+  /** Score >= this counts as pass (0-100, default 65) */
+  aiPassThreshold: number;
 }

@@ -115,6 +115,10 @@ export async function ingestRoutineScrape(
       const contentChanged = listingChanged(row, { price, name, url, imageUrl });
       const priceChanged =
         price != null && row.lastPrice != null && price !== row.lastPrice;
+      const priceDecreased =
+        priceChanged && price != null && row.lastPrice != null && price < row.lastPrice;
+      const targetHit =
+        priceChanged && price != null && row.targetPrice != null && price <= row.targetPrice;
 
       // Always bump presence; only refresh content fields when they changed
       // (avoids rewriting identical jsonb every scrape)
@@ -130,6 +134,12 @@ export async function ingestRoutineScrape(
         updates.imageUrl = imageUrl ?? row.imageUrl;
         updates.lastPrice = price;
         updates.lastData = data;
+      }
+
+      // Read cache for the price-drop badge (listing_events stays the truth)
+      if (priceChanged) {
+        updates.prevPrice = row.lastPrice;
+        updates.priceChangedAt = now;
       }
 
       // Price change re-opens interest (same listing, "new" deal to the user)
@@ -160,11 +170,27 @@ export async function ingestRoutineScrape(
           kind: "price_change",
           oldPrice: row.lastPrice,
           newPrice: price,
-          // Push only for first_seen
-          notified: true,
+          // Push for drops — silenced when the target_hit event below covers it
+          notified: !priceDecreased || targetHit,
           createdAt: now,
         });
         eventsCreated++;
+      }
+
+      // Price reached the user's target → push instead of the plain drop line
+      if (targetHit) {
+        await db.insert(listingEvents).values({
+          listingId: id,
+          scrapeRunId,
+          searchRoutineId,
+          kind: "target_hit",
+          oldPrice: row.lastPrice,
+          newPrice: price,
+          notified: false,
+          createdAt: now,
+        });
+        eventsCreated++;
+        log("Ingest", `listing ${id}: target price hit (${price} <= ${row.targetPrice})`);
       }
 
       await db.update(listings).set(updates).where(eq(listings.id, id));

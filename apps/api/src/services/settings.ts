@@ -12,6 +12,7 @@ export const SETTING_KEYS = {
   aiBaseUrl: "ai_base_url",
   aiApiKey: "ai_api_key",
   aiModel: "ai_model",
+  aiPassThreshold: "ai_pass_threshold",
 } as const;
 
 /** Allowed scrape interval range (minutes). */
@@ -21,6 +22,8 @@ export const SCRAP_INTERVAL_MAX = 24 * 60; // 1 day
 /** AI evaluation defaults (Ollama-compatible endpoint; cloud by default). */
 export const AI_DEFAULT_BASE_URL = "https://ollama.com";
 export const AI_DEFAULT_MODEL = "gemma4:31b";
+/** Score >= threshold counts as pass. */
+export const AI_DEFAULT_PASS_THRESHOLD = 65;
 
 export async function getSetting(
   db: Database,

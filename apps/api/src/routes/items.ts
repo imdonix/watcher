@@ -27,9 +27,13 @@ function mapListing(row: typeof listings.$inferSelect, sightingCount = 0) {
     details: row.details ?? null,
     detailsScrapedAt: row.detailsScrapedAt ?? null,
     aiVerdict: (row.aiVerdict as "pass" | "fail" | null) ?? null,
+    aiScore: row.aiScore ?? null,
     aiReason: row.aiReason ?? null,
     aiModel: row.aiModel ?? null,
     aiEvaluatedAt: row.aiEvaluatedAt ?? null,
+    prevPrice: row.prevPrice ?? null,
+    priceChangedAt: row.priceChangedAt ?? null,
+    targetPrice: row.targetPrice ?? null,
   };
 }
 
@@ -129,6 +133,57 @@ export function itemRoutes(db: Database) {
 
     log("API", `listing ${id} notInterested=${markDismissed}`);
     return c.json(mapListing(updated));
+  });
+
+  /** Set or clear the per-listing price alert threshold. */
+  app.post("/:id/target-price", async (c) => {
+    const id = c.req.param("id");
+    const body = (await c.req.json().catch(() => ({}))) as { targetPrice?: unknown };
+    const raw = body.targetPrice;
+
+    let target: number | null;
+    if (raw === null || raw === undefined || raw === "") {
+      target = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 0 || n > 100_000_000) {
+        return c.json(
+          { error: "targetPrice must be an integer between 0 and 100000000 (or null to clear)" },
+          400,
+        );
+      }
+      target = n;
+    }
+
+    const [row] = await db.select().from(listings).where(eq(listings.id, id)).limit(1);
+    if (!row) return c.json({ error: "Not found" }, 404);
+
+    const now = new Date();
+    const targetChanged = row.targetPrice !== target;
+    const [updated] = await db
+      .update(listings)
+      .set({ targetPrice: target, updatedAt: now })
+      .where(eq(listings.id, id))
+      .returning();
+
+    // Current price already at/below the new target → alert right away,
+    // but only when the threshold actually changed (no repeat spam on re-save)
+    if (target != null && targetChanged && row.lastPrice != null && row.lastPrice <= target) {
+      await db.insert(listingEvents).values({
+        listingId: id,
+        scrapeRunId: null,
+        searchRoutineId: null,
+        kind: "target_hit",
+        oldPrice: row.lastPrice,
+        newPrice: row.lastPrice,
+        notified: false,
+        createdAt: now,
+      });
+      log("API", `listing ${id}: target price ${target} already met (${row.lastPrice})`);
+    }
+
+    log("API", `listing ${id} targetPrice=${target ?? "clear"}`);
+    return c.json(mapListing(updated ?? row));
   });
 
   app.get("/:id/sightings", async (c) => {

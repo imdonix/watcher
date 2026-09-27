@@ -16,12 +16,19 @@ interface AiForm {
   baseUrl: string;
   apiKey: string;
   model: string;
+  passThreshold: string;
 }
 
 export function SettingsPage() {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [intervalMinutes, setIntervalMinutes] = useState("");
-  const [ai, setAi] = useState<AiForm>({ enabled: true, baseUrl: "", apiKey: "", model: "" });
+  const [ai, setAi] = useState<AiForm>({
+    enabled: true,
+    baseUrl: "",
+    apiKey: "",
+    model: "",
+    passThreshold: "65",
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingAi, setTestingAi] = useState(false);
@@ -35,6 +42,7 @@ export function SettingsPage() {
       baseUrl: next.aiBaseUrl,
       apiKey: next.aiApiKey,
       model: next.aiModel,
+      passThreshold: String(next.aiPassThreshold ?? 65),
     });
   }, []);
 
@@ -94,6 +102,11 @@ export function SettingsPage() {
       toast.error("Model is required");
       return;
     }
+    const threshold = Number(ai.passThreshold);
+    if (!Number.isInteger(threshold) || threshold < 0 || threshold > 100) {
+      toast.error("Pass threshold must be a whole number between 0 and 100");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -102,6 +115,7 @@ export function SettingsPage() {
         aiBaseUrl: baseUrl,
         aiApiKey: ai.apiKey.trim(),
         aiModel: ai.model.trim(),
+        aiPassThreshold: threshold,
       });
       applySettings(next);
       toast.success("AI evaluation settings saved");
@@ -142,7 +156,8 @@ export function SettingsPage() {
     ai.enabled !== settings.aiEnabled ||
     ai.baseUrl.trim().replace(/\/+$/, "") !== settings.aiBaseUrl ||
     ai.apiKey.trim() !== settings.aiApiKey ||
-    ai.model.trim() !== settings.aiModel;
+    ai.model.trim() !== settings.aiModel ||
+    Number(ai.passThreshold) !== settings.aiPassThreshold;
 
   return (
     <div className="space-y-5">
@@ -276,6 +291,23 @@ export function SettingsPage() {
               />
               <p className="text-[11px] text-muted-foreground">
                 Model name as listed by the endpoint.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ai-threshold">Pass threshold</Label>
+              <Input
+                id="ai-threshold"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={100}
+                step={1}
+                className="tabular-nums"
+                value={ai.passThreshold}
+                onChange={(e) => setAi((a) => ({ ...a, passThreshold: e.target.value }))}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Scores at or above this (0–100) count as pass.
               </p>
             </div>
           </div>

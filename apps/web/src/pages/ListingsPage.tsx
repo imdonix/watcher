@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import type { ItemView } from "@watcher/shared";
 import { formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
+import { aiScoreClass } from "@/lib/ai";
 import { formatEngine, formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,12 +32,13 @@ import { SegmentedControl } from "@/components/SegmentedControl";
 import { cn } from "@/lib/utils";
 
 type Filter = "available" | "all" | "unavailable";
-type Sort = "newest" | "price-asc" | "price-desc";
+type Sort = "newest" | "price-asc" | "price-desc" | "ai-score";
 
 const SORT_LABEL: Record<Sort, string> = {
   newest: "Newest first",
   "price-asc": "Price: low to high",
   "price-desc": "Price: high to low",
+  "ai-score": "AI score",
 };
 
 function isUnavailable(item: ItemView): boolean {
@@ -75,6 +77,7 @@ export function ListingsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [exiting, setExiting] = useState<Set<string>>(new Set());
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
+  const [passThreshold, setPassThreshold] = useState(65);
   const listTopRef = useRef<HTMLDivElement>(null);
 
   /** One fetch of everything — filters/search/sort switch instantly afterwards. */
@@ -83,6 +86,11 @@ export function ListingsPage() {
     else setLoading(true);
     try {
       setItems(await api.items(300, "all"));
+      // Score color bands follow the configured threshold (failure = default)
+      void api
+        .settings()
+        .then((s) => setPassThreshold(Number(s.aiPassThreshold) || 65))
+        .catch(() => {});
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load listings");
     } finally {
@@ -122,9 +130,11 @@ export function ListingsPage() {
     }
 
     const priceOf = (i: ItemView) => (typeof i.price === "number" ? i.price : Number.MAX_SAFE_INTEGER);
+    const scoreOf = (i: ItemView) => (typeof i.aiScore === "number" ? i.aiScore : -1);
     const sorted = [...rows];
     if (sort === "price-asc") sorted.sort((a, b) => priceOf(a) - priceOf(b));
     else if (sort === "price-desc") sorted.sort((a, b) => priceOf(b) - priceOf(a));
+    else if (sort === "ai-score") sorted.sort((a, b) => scoreOf(b) - scoreOf(a));
     else
       sorted.sort(
         (a, b) => new Date(String(b.firstSeenAt)).getTime() - new Date(String(a.firstSeenAt)).getTime(),
@@ -327,6 +337,12 @@ export function ListingsPage() {
               const leaving = exiting.has(item.id);
               const unavailable = isUnavailable(item);
               const imgBroken = brokenImages.has(item.id);
+              const dropped =
+                typeof item.prevPrice === "number" &&
+                typeof item.price === "number" &&
+                item.prevPrice > item.price
+                  ? item.prevPrice - item.price
+                  : null;
 
               return (
                 <li
@@ -379,8 +395,22 @@ export function ListingsPage() {
                             <h3 className="line-clamp-2 min-w-0 flex-1 text-[14px] font-medium leading-snug text-foreground sm:text-[15px]">
                               {String(item.name)}
                             </h3>
-                            <span className="shrink-0 text-base font-semibold tabular-nums tracking-tight text-primary sm:text-lg">
-                              {priceLabel(item)}
+                            <span className="flex shrink-0 items-baseline gap-1.5">
+                              <span className="text-base font-semibold tabular-nums tracking-tight text-primary sm:text-lg">
+                                {priceLabel(item)}
+                              </span>
+                              {dropped != null && (
+                                <span
+                                  title={`Price dropped from ${formatPrice(item.prevPrice as number)}${
+                                    item.priceChangedAt
+                                      ? ` · ${formatRelative(item.priceChangedAt)}`
+                                      : ""
+                                  }`}
+                                  className="cursor-help rounded-md bg-emerald-100 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300"
+                                >
+                                  ▼ {formatPrice(dropped)}
+                                </span>
+                              )}
                             </span>
                           </div>
 
@@ -395,7 +425,22 @@ export function ListingsPage() {
                                 {status.text}
                               </span>
                             )}
-                            {item.aiVerdict && (
+                            {typeof item.aiScore === "number" && (
+                              <span
+                                title={
+                                  item.aiReason
+                                    ? `AI score ${item.aiScore}: ${item.aiReason}`
+                                    : `AI score ${item.aiScore}`
+                                }
+                                className={cn(
+                                  "cursor-help rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
+                                  aiScoreClass(item.aiScore, passThreshold),
+                                )}
+                              >
+                                AI {item.aiScore}
+                              </span>
+                            )}
+                            {item.aiScore == null && item.aiVerdict && (
                               <span
                                 title={
                                   item.aiReason
