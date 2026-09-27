@@ -97,6 +97,14 @@ export const api = {
     });
   },
 
+  /** Manual AI evaluation / re-evaluation of one listing. */
+  evaluateItem(id: string) {
+    return request<{
+      verdict: { pass: boolean; reason: string; model: string };
+      listing: ItemView;
+    }>(`/items/${encodeURIComponent(id)}/ai-evaluate`, { method: "POST" });
+  },
+
   scrap() {
     return request<{
       ok: boolean;
@@ -163,10 +171,18 @@ export const api = {
     return request<SystemSettings>("/settings");
   },
 
-  updateSettings(body: { scrapIntervalMinutes: number }) {
+  updateSettings(body: Partial<SystemSettings>) {
     return request<SystemSettings>("/settings", {
       method: "PUT",
       body: JSON.stringify(body),
+    });
+  },
+
+  /** Connectivity check for the AI endpoint (uses typed or saved config). */
+  aiTest(body?: { aiBaseUrl?: string; aiApiKey?: string; aiModel?: string }) {
+    return request<{ ok: boolean; detail: string; model: string }>("/settings/ai-test", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
     });
   },
 };

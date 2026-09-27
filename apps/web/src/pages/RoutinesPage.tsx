@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -362,6 +363,11 @@ export function RoutinesPage() {
                         <Badge variant="secondary" className="font-normal">
                           {eng?.name ?? "engine"}
                         </Badge>
+                        {typeof r.aiPrompt === "string" && r.aiPrompt.trim() && (
+                          <Badge variant="info" className="font-normal" title="AI evaluation prompt set">
+                            AI
+                          </Badge>
+                        )}
                         {price && (
                           <span className="text-xs font-medium tabular-nums text-muted-foreground">
                             {price}
@@ -566,6 +572,29 @@ export function RoutinesPage() {
           )}
         </section>
       )}
+
+      {/* AI evaluation */}
+      <section className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          AI evaluation
+        </h3>
+        <div className="space-y-1.5">
+          <Label htmlFor="aiPrompt">Evaluation prompt (optional)</Label>
+          <Textarea
+            id="aiPrompt"
+            rows={4}
+            value={typeof form.aiPrompt === "string" ? form.aiPrompt : ""}
+            onChange={(e) => setField("aiPrompt", e.target.value)}
+            placeholder="When is a listing a good match? e.g. Magánszemély hirdetése, bútorozott lakás, ár 150 000 Ft alatt…"
+          />
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            After each scrape an AI model checks listings of this engine against this prompt and
+            shows a pass/fail badge with a one-line reason. Write the prompt in the language you
+            want reasons in. Needs an API key on the Settings page — leave empty to skip AI
+            evaluation for this routine.
+          </p>
+        </div>
+      </section>
 
       {/* Sticky save bar (mobile) + desktop actions */}
       <div

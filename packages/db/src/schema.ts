@@ -64,6 +64,13 @@ export const listings = pgTable("listings", {
   details: jsonb("details").$type<Record<string, unknown> | null>(),
   /** Set after a completed detail attempt (success or fail) — never re-scraped. */
   detailsScrapedAt: timestamp("details_scraped_at", { withTimezone: true }),
+  /** AI evaluation verdict: pass | fail (null = not evaluated) */
+  aiVerdict: varchar("ai_verdict", { length: 16 }),
+  /** Short human reason from the evaluation model */
+  aiReason: text("ai_reason"),
+  /** Model that produced the verdict */
+  aiModel: varchar("ai_model", { length: 128 }),
+  aiEvaluatedAt: timestamp("ai_evaluated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -86,6 +86,9 @@ export interface ScrapeItemResult {
 /** Synthetic engine slug for the per-run item-details job in scrape_routine_results */
 export const ITEM_DETAILS_JOB_SLUG = "__item_details__";
 
+/** Synthetic engine slug for the per-run AI evaluation job in scrape_routine_results */
+export const AI_EVALUATION_JOB_SLUG = "__ai_evaluate__";
+
 export type ListingStatus = "active" | "missing";
 
 export interface ItemView {
@@ -107,6 +110,11 @@ export interface ItemView {
   sightingCount?: number;
   sent?: boolean;
   found?: string;
+  /** AI evaluation verdict (null / absent = not evaluated yet) */
+  aiVerdict?: "pass" | "fail" | null;
+  aiReason?: string | null;
+  aiModel?: string | null;
+  aiEvaluatedAt?: string | null;
   [key: string]: unknown;
 }
 
@@ -154,7 +162,7 @@ export interface ApiError {
 
 /** Live scrape progress while a run is active (null / idle when not scraping). */
 export interface ScrapeProgress {
-  phase: "idle" | "starting" | "routine" | "details" | "finishing" | "notify";
+  phase: "idle" | "starting" | "routine" | "details" | "ai" | "finishing" | "notify";
   /** Human-readable line for the UI banner */
   message: string;
   runId?: number | null;
@@ -240,4 +248,9 @@ export interface SystemSettings {
   scrapIntervalMax: number;
   nextScrapeAt: string | null;
   lastScrapeAt: string | null;
+  /** AI listing evaluation (Ollama-compatible chat API) */
+  aiEnabled: boolean;
+  aiBaseUrl: string;
+  aiApiKey: string;
+  aiModel: string;
 }
