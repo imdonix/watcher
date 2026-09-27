@@ -79,6 +79,8 @@ export function ListingsPage() {
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [passThreshold, setPassThreshold] = useState(65);
   const listTopRef = useRef<HTMLDivElement>(null);
+  /** Pending per-row exit-animation timers (id → timeout handle). */
+  const flipTimers = useRef(new Map<string, number>());
 
   /** One fetch of everything — filters/search/sort switch instantly afterwards. */
   const load = useCallback(async (opts?: { soft?: boolean }) => {
@@ -146,28 +148,65 @@ export function ListingsPage() {
     navigate(`/listings/${encodeURIComponent(id)}`);
   }
 
-  /** Remove from current view after a short exit animation — keeps scroll position stable. */
-  function removeWithExit(id: string, delayMs = 220) {
-    setExiting((prev) => new Set(prev).add(id));
-    window.setTimeout(() => {
-      setItems((prev) => prev.filter((row) => row.id !== id));
-      setExiting((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }, delayMs);
+  function patchItem(id: string, patch: Partial<ItemView>) {
+    setItems((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  }
+
+  function clearExiting(id: string) {
+    setExiting((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  /**
+   * Play the exit animation, then flip the row's fields instead of removing
+   * it — filters/counts recompute from `items`, so the listing shows up under
+   * the other tab without a refetch.
+   */
+  function flipAfterExit(id: string, patch: Partial<ItemView>, startedAt: number, delayMs = 220) {
+    const existing = flipTimers.current.get(id);
+    if (existing) window.clearTimeout(existing);
+    const wait = Math.max(0, delayMs - (Date.now() - startedAt));
+    flipTimers.current.set(
+      id,
+      window.setTimeout(() => {
+        flipTimers.current.delete(id);
+        patchItem(id, patch);
+        clearExiting(id);
+      }, wait),
+    );
+  }
+
+  function cancelFlip(id: string) {
+    const existing = flipTimers.current.get(id);
+    if (existing) {
+      window.clearTimeout(existing);
+      flipTimers.current.delete(id);
+    }
   }
 
   async function dismiss(item: ItemView) {
     if (busyId || exiting.has(item.id)) return;
     setBusyId(item.id);
 
-    // Optimistic: leave the list immediately so it never "jumps" to the end
-    removeWithExit(item.id);
+    // Optimistic: animate out of the current tab immediately
+    const started = Date.now();
+    setExiting((prev) => new Set(prev).add(item.id));
 
     try {
       await api.setNotInterested(item.id, true);
+      flipAfterExit(
+        item.id,
+        {
+          notInterested: true,
+          notInterestedAt: new Date().toISOString(),
+          available: item.status === "active",
+        },
+        started,
+      );
       toast("Hidden as not interested", {
         description: "Find it under Hidden",
         action: {
@@ -175,6 +214,7 @@ export function ListingsPage() {
           onClick: () => {
             void (async () => {
               try {
+                cancelFlip(item.id);
                 await api.setNotInterested(item.id, false);
                 await load({ soft: true });
               } catch {
@@ -185,6 +225,7 @@ export function ListingsPage() {
         },
       });
     } catch (err) {
+      clearExiting(item.id);
       toast.error(err instanceof Error ? err.message : "Update failed");
       // Restore list on failure
       await load({ soft: true });
@@ -196,11 +237,18 @@ export function ListingsPage() {
   async function restore(item: ItemView) {
     if (busyId || exiting.has(item.id)) return;
     setBusyId(item.id);
-    removeWithExit(item.id);
+    const started = Date.now();
+    setExiting((prev) => new Set(prev).add(item.id));
     try {
       await api.setNotInterested(item.id, false);
+      flipAfterExit(
+        item.id,
+        { notInterested: false, notInterestedAt: null, available: item.status === "active" },
+        started,
+      );
       toast.success("Tracking again");
     } catch (err) {
+      clearExiting(item.id);
       toast.error(err instanceof Error ? err.message : "Update failed");
       await load({ soft: true });
     } finally {
