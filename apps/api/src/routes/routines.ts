@@ -98,6 +98,7 @@ export function routineRoutes(db: Database) {
           .update(listings)
           .set({
             aiVerdict: null,
+            aiScore: null,
             aiReason: null,
             aiModel: null,
             aiEvaluatedAt: null,

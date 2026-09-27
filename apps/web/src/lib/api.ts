@@ -100,9 +100,17 @@ export const api = {
   /** Manual AI evaluation / re-evaluation of one listing. */
   evaluateItem(id: string) {
     return request<{
-      verdict: { pass: boolean; reason: string; model: string };
+      verdict: { score: number; pass: boolean; reason: string; model: string };
       listing: ItemView;
     }>(`/items/${encodeURIComponent(id)}/ai-evaluate`, { method: "POST" });
+  },
+
+  /** Set / clear the per-listing price alert threshold (null clears). */
+  setTargetPrice(id: string, targetPrice: number | null) {
+    return request<ItemView>(`/items/${encodeURIComponent(id)}/target-price`, {
+      method: "POST",
+      body: JSON.stringify({ targetPrice }),
+    });
   },
 
   scrap() {

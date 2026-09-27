@@ -1,14 +1,38 @@
 import { eq } from "drizzle-orm";
 import { listingEvents, listings, type Database } from "@watcher/db";
+import { formatPrice, type ListingEventKind } from "@watcher/shared";
 import { dateOnly, log } from "../lib/time";
 import { isPushConfigured, sendPushToAll } from "./push";
 
-/** Only brand-new listings warrant a push. */
-const NOTIFY_KINDS = ["first_seen"] as const;
+/** Events that surface as push notifications. Everything else is silenced. */
+const NOTIFY_KINDS: readonly ListingEventKind[] = ["first_seen", "price_change", "target_hit"];
+
+const MAX_ALERT_LINES = 3;
+const NAME_MAX = 36;
+
+function shortName(name: string): string {
+  return name.length > NAME_MAX ? `${name.slice(0, NAME_MAX - 1)}…` : name;
+}
+
+function money(n: number | null): string {
+  return n == null ? "—" : formatPrice(n);
+}
+
+/** One detail line for a non-new-listing alert. */
+function alertLine(p: { event: typeof listingEvents.$inferSelect; listing: typeof listings.$inferSelect }): string {
+  const name = shortName(p.listing.name);
+  if (p.event.kind === "target_hit") {
+    return p.event.oldPrice != null && p.event.oldPrice !== p.event.newPrice
+      ? `Target hit · ${name} · ${money(p.event.oldPrice)} → ${money(p.event.newPrice)}`
+      : `Target hit · ${name} · ${money(p.event.newPrice)}`;
+  }
+  return `↓ ${name} · ${money(p.event.oldPrice)} → ${money(p.event.newPrice)}`;
+}
 
 /**
- * Push only for new listings (first_seen). Other unnotified events
- * (missing, price_change, reappeared) are marked handled without a push.
+ * Push for new listings (first_seen), price drops (price_change) and
+ * target-price hits (target_hit). Other unnotified events (missing,
+ * reappeared) are marked handled without a push.
  */
 export async function notifyAfterScrape(
   db: Database,
@@ -23,12 +47,9 @@ export async function notifyAfterScrape(
     .innerJoin(listings, eq(listingEvents.listingId, listings.id))
     .where(eq(listingEvents.notified, false));
 
-  const toNotify = pending.filter((p) =>
-    (NOTIFY_KINDS as readonly string[]).includes(p.event.kind),
-  );
-  const toSilence = pending.filter(
-    (p) => !(NOTIFY_KINDS as readonly string[]).includes(p.event.kind),
-  );
+  const kinds = NOTIFY_KINDS as readonly string[];
+  const toNotify = pending.filter((p) => kinds.includes(p.event.kind));
+  const toSilence = pending.filter((p) => !kinds.includes(p.event.kind));
 
   // Drain non-notify events so they never surface as "findings"
   for (const { event } of toSilence) {
@@ -40,7 +61,7 @@ export async function notifyAfterScrape(
   if (toSilence.length > 0) {
     log(
       "Notify",
-      `post-scrape (${scrapeStatus}) — silenced ${toSilence.length} non-new event(s)`,
+      `post-scrape (${scrapeStatus}) — silenced ${toSilence.length} non-notify event(s)`,
     );
   }
 
@@ -50,10 +71,24 @@ export async function notifyAfterScrape(
     return 0;
   }
 
-  // Single line of info — no branded title (SW shows body as the notification text)
-  const message =
-    n === 1 ? "1 new listing available" : `${n} new listings available`;
-  log("Notify", `post-scrape (${scrapeStatus}) — ${message}`);
+  // All-new batches keep the classic summary; mixed batches get detail lines.
+  const news = toNotify.filter((p) => p.event.kind === "first_seen");
+  const alerts = toNotify.filter((p) => p.event.kind !== "first_seen");
+  let message: string;
+  if (alerts.length === 0) {
+    message = n === 1 ? "1 new listing available" : `${n} new listings available`;
+  } else {
+    const lines: string[] = [];
+    if (news.length > 0) {
+      lines.push(news.length === 1 ? "1 new listing" : `${news.length} new listings`);
+    }
+    for (const p of alerts.slice(0, MAX_ALERT_LINES)) lines.push(alertLine(p));
+    if (alerts.length > MAX_ALERT_LINES) {
+      lines.push(`+${alerts.length - MAX_ALERT_LINES} more`);
+    }
+    message = lines.join("\n");
+  }
+  log("Notify", `post-scrape (${scrapeStatus}) — ${message.replaceAll("\n", " | ")}`);
 
   const pushOk = await sendPushToAll(db, {
     title: "",

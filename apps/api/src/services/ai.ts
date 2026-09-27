@@ -15,7 +15,9 @@ import { log, logError } from "../lib/time";
 import {
   AI_DEFAULT_BASE_URL,
   AI_DEFAULT_MODEL,
+  AI_DEFAULT_PASS_THRESHOLD,
   getBooleanSetting,
+  getNumberSetting,
   getStringSetting,
   SETTING_KEYS,
 } from "./settings";
@@ -30,9 +32,12 @@ export interface AiConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** Score >= this counts as pass (0-100). */
+  passThreshold: number;
 }
 
 export interface AiVerdict {
+  score: number;
   pass: boolean;
   reason: string;
 }
@@ -59,11 +64,16 @@ export async function loadAiConfig(db: Database): Promise<AiConfig> {
   const baseUrl = await getStringSetting(db, SETTING_KEYS.aiBaseUrl);
   const apiKey = await getStringSetting(db, SETTING_KEYS.aiApiKey);
   const model = await getStringSetting(db, SETTING_KEYS.aiModel);
+  const passThreshold = await getNumberSetting(db, SETTING_KEYS.aiPassThreshold);
   return {
     enabled: enabled !== false,
     baseUrl: (baseUrl ?? "").trim() || AI_DEFAULT_BASE_URL,
     apiKey: (apiKey ?? "").trim(),
     model: (model ?? "").trim() || AI_DEFAULT_MODEL,
+    passThreshold:
+      passThreshold != null && passThreshold >= 0 && passThreshold <= 100
+        ? Math.round(passThreshold)
+        : AI_DEFAULT_PASS_THRESHOLD,
   };
 }
 
@@ -76,14 +86,14 @@ function chatUrl(baseUrl: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/api/chat`;
 }
 
-const SYSTEM_PROMPT = `You are a marketplace listing evaluator. You receive the user's evaluation criteria and exactly one listing. Decide whether the listing matches the criteria.
+const SYSTEM_PROMPT = `You are a marketplace listing evaluator. You receive the user's evaluation criteria and exactly one listing. Score how well the listing matches the criteria.
 
 Respond with JSON only, in exactly this shape:
-{"pass": true, "reason": "one short sentence"}
+{"score": 85, "reason": "one short sentence"}
 
 Rules:
-- Set "pass" to true when the listing matches the criteria, false when it does not.
-- If information is missing or you are unsure, set "pass" to false.
+- "score" is an integer from 0 to 100: 100 = perfect match, 70-99 = good match, 40-69 = partial match with notable issues, 1-39 = poor match, 0 = clearly irrelevant.
+- If information is missing or you are unsure, give a lower score rather than an optimistic one.
 - Keep "reason" under 200 characters.
 - Write "reason" in the same language the evaluation criteria are written in (Hungarian criteria → Hungarian reason).`;
 
@@ -118,7 +128,7 @@ function buildUserPrompt(
 
 type ParsedChatResponse = { message?: { content?: string } };
 
-function normalizeVerdict(content: string): AiVerdict {
+function normalizeVerdict(content: string, passThreshold: number): AiVerdict {
   let text = content.trim();
   // Tolerate fenced output despite format:"json"
   const fence = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
@@ -135,26 +145,42 @@ function normalizeVerdict(content: string): AiVerdict {
   }
 
   const obj = parsed as Record<string, unknown>;
+
+  // Preferred: numeric score 0-100
+  let score: number | null = null;
+  const rawScore = obj.score;
+  if (typeof rawScore === "number" && Number.isFinite(rawScore)) {
+    score = Math.round(rawScore);
+  } else if (typeof rawScore === "string" && Number.isFinite(Number(rawScore.trim()))) {
+    score = Math.round(Number(rawScore.trim()));
+  }
+
+  // Legacy tolerance: boolean "pass" only → map to a coarse score
+  let legacyPass: boolean | null = null;
   const rawPass = obj.pass ?? obj.verdict ?? obj.match;
-  let pass: boolean;
   if (typeof rawPass === "boolean") {
-    pass = rawPass;
+    legacyPass = rawPass;
   } else if (typeof rawPass === "string") {
     const v = rawPass.trim().toLowerCase();
-    if (["true", "pass", "yes", "match", "matches", "igen"].includes(v)) pass = true;
+    if (["true", "pass", "yes", "match", "matches", "igen"].includes(v)) legacyPass = true;
     else if (["false", "fail", "no", "no match", "does not match", "nem"].includes(v))
-      pass = false;
-    else throw new Error(`Unrecognized verdict value: ${rawPass}`);
-  } else {
-    throw new Error("Model output missing boolean \"pass\"");
+      legacyPass = false;
   }
+
+  if (score == null && legacyPass == null) {
+    throw new Error('Model output missing numeric "score"');
+  }
+  if (score == null) score = legacyPass ? 70 : 20;
+  score = Math.min(100, Math.max(0, score));
+
+  const pass = score >= passThreshold;
 
   const rawReason = obj.reason ?? obj.explanation ?? obj.why;
   const reason = typeof rawReason === "string" ? rawReason.trim() : "";
   if (!pass && !reason) {
-    throw new Error("Model output missing \"reason\" for a failed verdict");
+    throw new Error(`Model output missing "reason" for a failing score (${score})`);
   }
-  return { pass, reason: reason.slice(0, 500) };
+  return { score, pass, reason: reason.slice(0, 500) };
 }
 
 /** Call the Ollama-compatible chat endpoint with forced JSON output. */
@@ -185,7 +211,7 @@ export async function callAiModel(cfg: AiConfig, prompt: string, listing: typeof
   const data = (await res.json().catch(() => ({}))) as ParsedChatResponse;
   const content = data.message?.content ?? "";
   if (!content.trim()) throw new Error("AI response contained no content");
-  return normalizeVerdict(content);
+  return normalizeVerdict(content, cfg.passThreshold);
 }
 
 /** Lightweight connectivity check: list models on the configured endpoint. */
@@ -283,6 +309,7 @@ export async function evaluateListing(
     .update(listings)
     .set({
       aiVerdict: verdict.pass ? "pass" : "fail",
+      aiScore: verdict.score,
       aiReason: verdict.reason,
       aiModel: cfg.model,
       aiEvaluatedAt: now,
@@ -358,7 +385,7 @@ export async function runAiEvaluateJob(
     try {
       const verdict = await evaluateListing(db, cfg, row, routines);
       evaluated++;
-      log("AI", `${verdict.pass ? "pass" : "fail"} ${row.engineSlug} ${row.id}`);
+      log("AI", `${verdict.pass ? "pass" : "fail"}(${verdict.score}) ${row.engineSlug} ${row.id}`);
     } catch (err) {
       failed++;
       logError("AI", `${row.id}: ${err}`);

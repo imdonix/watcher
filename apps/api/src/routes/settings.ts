@@ -26,6 +26,7 @@ async function readSettings(db: Database) {
     aiBaseUrl: ai.baseUrl,
     aiApiKey: ai.apiKey,
     aiModel: ai.model,
+    aiPassThreshold: ai.passThreshold,
   };
 }
 
@@ -45,6 +46,7 @@ export function settingsRoutes(db: Database) {
       aiBaseUrl?: unknown;
       aiApiKey?: unknown;
       aiModel?: unknown;
+      aiPassThreshold?: unknown;
     };
 
     const hasScrap = body.scrapIntervalMinutes !== undefined;
@@ -52,7 +54,8 @@ export function settingsRoutes(db: Database) {
       body.aiEnabled !== undefined ||
       body.aiBaseUrl !== undefined ||
       body.aiApiKey !== undefined ||
-      body.aiModel !== undefined;
+      body.aiModel !== undefined ||
+      body.aiPassThreshold !== undefined;
 
     if (!hasScrap && !hasAi) {
       return c.json({ error: "No settings to update" }, 400);
@@ -112,6 +115,14 @@ export function settingsRoutes(db: Database) {
         await setSetting(db, SETTING_KEYS.aiModel, "string", model);
       }
 
+      if (body.aiPassThreshold !== undefined) {
+        const n = Number(body.aiPassThreshold);
+        if (!Number.isInteger(n) || n < 0 || n > 100) {
+          return c.json({ error: "aiPassThreshold must be an integer between 0 and 100" }, 400);
+        }
+        await setSetting(db, SETTING_KEYS.aiPassThreshold, "number", String(n));
+      }
+
       log("API", "settings updated AI evaluation config");
     }
 
@@ -145,6 +156,7 @@ export function settingsRoutes(db: Database) {
       baseUrl,
       apiKey,
       model,
+      passThreshold: saved.passThreshold,
     });
     log("API", `AI connection test → ok=${result.ok} (${result.detail})`);
     return c.json({ ...result, model });

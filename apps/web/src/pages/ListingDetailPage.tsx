@@ -14,10 +14,12 @@ import { toast } from "sonner";
 import type { ListingDetailResponse, ListingItemDetails } from "@watcher/shared";
 import { formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
+import { aiScoreVariant } from "@/lib/ai";
 import { formatDateTime, formatEngine, formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { PageLoader } from "@/components/Spinner";
 import { cn } from "@/lib/utils";
 
@@ -83,12 +85,19 @@ export function ListingDetailPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [passThreshold, setPassThreshold] = useState(65);
+  const [targetInput, setTargetInput] = useState("");
+  const [targetBusy, setTargetBusy] = useState(false);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
       setData(await api.listing(id));
+      void api
+        .settings()
+        .then((s) => setPassThreshold(Number(s.aiPassThreshold) || 65))
+        .catch(() => {});
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load listing");
     } finally {
@@ -101,6 +110,12 @@ export function ListingDetailPage() {
   }, [load]);
 
   const listing = data?.listing;
+
+  // Keep the target-price field in sync with the stored value
+  useEffect(() => {
+    setTargetInput(listing?.targetPrice != null ? String(listing.targetPrice) : "");
+  }, [listing?.id, listing?.targetPrice]);
+
   const priceDelta = useMemo(() => {
     const hist = data?.priceHistory?.filter((p) => p.price != null) ?? [];
     if (hist.length < 2) return null;
@@ -147,6 +162,7 @@ export function ListingDetailPage() {
               listing: {
                 ...prev.listing,
                 aiVerdict: res.listing.aiVerdict ?? null,
+                aiScore: res.listing.aiScore ?? null,
                 aiReason: res.listing.aiReason ?? null,
                 aiModel: res.listing.aiModel ?? null,
                 aiEvaluatedAt: res.listing.aiEvaluatedAt ?? null,
@@ -154,13 +170,47 @@ export function ListingDetailPage() {
             }
           : prev,
       );
-      toast.success(res.verdict.pass ? "AI evaluation: pass" : "AI evaluation: fail", {
-        description: res.verdict.reason || undefined,
-      });
+      toast.success(
+        `AI score ${res.verdict.score} — ${res.verdict.pass ? "pass" : "fail"}`,
+        { description: res.verdict.reason || undefined },
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "AI evaluation failed");
     } finally {
       setAiBusy(false);
+    }
+  }
+
+  /** Persist the price alert threshold (empty input clears it). */
+  async function saveTarget() {
+    if (!listing) return;
+    const raw = targetInput.trim();
+    let target: number | null = null;
+    if (raw) {
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 0 || n > 100_000_000) {
+        toast.error("Target price must be a whole number (Ft)");
+        return;
+      }
+      target = n;
+    }
+    setTargetBusy(true);
+    try {
+      const updated = await api.setTargetPrice(listing.id, target);
+      setData((prev) =>
+        prev
+          ? { ...prev, listing: { ...prev.listing, targetPrice: updated.targetPrice ?? null } }
+          : prev,
+      );
+      toast.success(
+        target != null
+          ? `Alert when the price drops to ${formatPrice(target)}`
+          : "Target price cleared",
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save target price");
+    } finally {
+      setTargetBusy(false);
     }
   }
 
@@ -180,6 +230,9 @@ export function ListingDetailPage() {
   }
 
   const unavailable = listing.status === "missing" || Boolean(listing.notInterested);
+  const prevPrice = typeof listing.prevPrice === "number" ? listing.prevPrice : null;
+  const curPrice = typeof listing.price === "number" ? listing.price : null;
+  const priceDropped = prevPrice != null && curPrice != null && prevPrice > curPrice;
   const details = (listing.details ?? null) as ListingItemDetails | null;
   const detailError =
     details && typeof (details as { error?: unknown }).error === "string"
@@ -236,6 +289,24 @@ export function ListingDetailPage() {
               <span className="text-2xl font-semibold tabular-nums tracking-tight text-primary">
                 {listing.priceFormatted ?? formatPrice(listing.price)}
               </span>
+              {priceDropped && (
+                <>
+                  <span className="text-base text-muted-foreground line-through">
+                    {formatPrice(prevPrice)}
+                  </span>
+                  <Badge
+                    variant="success"
+                    className="tabular-nums"
+                    title={
+                      listing.priceChangedAt
+                        ? `Dropped ${formatRelative(listing.priceChangedAt)}`
+                        : "Price dropped"
+                    }
+                  >
+                    ▼ {formatPrice(prevPrice - curPrice)}
+                  </Badge>
+                </>
+              )}
               {listing.notInterested ? (
                 <Badge variant="secondary">Not interested</Badge>
               ) : listing.status === "missing" ? (
@@ -251,14 +322,21 @@ export function ListingDetailPage() {
               {!listing.detailsScrapedAt && (
                 <Badge variant="secondary">Details pending</Badge>
               )}
-              {listing.aiVerdict && (
+              {typeof listing.aiScore === "number" ? (
+                <Badge
+                  variant={aiScoreVariant(listing.aiScore, passThreshold)}
+                  title={listing.aiReason ?? "AI evaluation"}
+                >
+                  AI {listing.aiScore}
+                </Badge>
+              ) : listing.aiVerdict ? (
                 <Badge
                   variant={listing.aiVerdict === "pass" ? "success" : "destructive"}
                   title={listing.aiReason ?? "AI evaluation"}
                 >
                   AI {listing.aiVerdict}
                 </Badge>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -399,18 +477,29 @@ export function ListingDetailPage() {
               <CardTitle className="flex flex-wrap items-center gap-2 text-base">
                 <Sparkles className="h-4 w-4 text-muted-foreground" />
                 AI evaluation
-                {listing.aiVerdict && (
+                {typeof listing.aiScore === "number" ? (
+                  <Badge
+                    variant={aiScoreVariant(listing.aiScore, passThreshold)}
+                    className="font-normal tabular-nums"
+                  >
+                    {listing.aiScore}/100
+                  </Badge>
+                ) : listing.aiVerdict ? (
                   <Badge
                     variant={listing.aiVerdict === "pass" ? "success" : "destructive"}
                     className="font-normal"
                   >
                     {listing.aiVerdict === "pass" ? "Pass" : "Fail"}
                   </Badge>
-                )}
+                ) : null}
               </CardTitle>
               <CardDescription>
                 {listing.aiEvaluatedAt
-                  ? `${listing.aiModel ? `${listing.aiModel} · ` : ""}evaluated ${formatRelative(listing.aiEvaluatedAt)}`
+                  ? `${listing.aiModel ? `${listing.aiModel} · ` : ""}evaluated ${formatRelative(listing.aiEvaluatedAt)}${
+                      typeof listing.aiScore === "number"
+                        ? ` · pass at ≥ ${passThreshold}`
+                        : ""
+                    }`
                   : "Not evaluated yet — needs an evaluation prompt on the routine and an API key in Settings."}
               </CardDescription>
             </CardHeader>
@@ -506,6 +595,38 @@ export function ListingDetailPage() {
                   {listing.notInterested ? "Dismissed" : "Tracking"}
                 </span>
               </div>
+              <div className="space-y-1.5 border-t border-border/70 pt-3">
+                <label htmlFor="target-price" className="text-xs text-muted-foreground">
+                  Target price
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    id="target-price"
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    placeholder="No target"
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void saveTarget();
+                    }}
+                    className="h-9 tabular-nums"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0"
+                    disabled={targetBusy}
+                    onClick={() => void saveTarget()}
+                  >
+                    {targetBusy ? "…" : "Save"}
+                  </Button>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Get a push alert when the price drops to or below this value.
+                </p>
+              </div>
               <p className="border-t border-border/70 pt-3 text-xs leading-relaxed text-muted-foreground">
                 Missing is only set after a complete scrape. Partial failures never mark items
                 gone.
@@ -533,7 +654,9 @@ export function ListingDetailPage() {
                                 ? "info"
                                 : e.kind === "first_seen"
                                   ? "success"
-                                  : "secondary"
+                                  : e.kind === "target_hit"
+                                    ? "success"
+                                    : "secondary"
                           }
                           className="capitalize"
                         >
