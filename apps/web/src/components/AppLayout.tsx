@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import type { ScrapeProgress } from "@watcher/shared";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { api } from "@/lib/api";
@@ -41,6 +42,43 @@ const nav = [
   { to: "/status", label: "Status", icon: Activity, match: /^\/status/ },
 ] as const;
 
+/** Short line 1 for the in-progress chip (counters where available). */
+function scrapePhaseLine(p: ScrapeProgress | null): string {
+  if (!p) return "Starting…";
+  switch (p.phase) {
+    case "routine":
+      return p.routineIndex != null && p.routinesTotal != null
+        ? `Routine ${p.routineIndex}/${p.routinesTotal}`
+        : "Scraping listings";
+    case "details":
+      return p.detailsTotal != null && p.detailsTotal > 0
+        ? `Details ${p.detailsIndex ?? 0}/${p.detailsTotal}`
+        : "Item details…";
+    case "ai":
+      return p.detailsTotal != null && p.detailsTotal > 0
+        ? `AI ${p.detailsIndex ?? 0}/${p.detailsTotal}`
+        : "AI evaluation…";
+    case "finishing":
+      return "Finishing up";
+    case "notify":
+      return "Sending notifications";
+    case "starting":
+      return "Starting…";
+    default:
+      return "Scraping…";
+  }
+}
+
+/** Line 2 for the chip — context without repeating line 1. */
+function scrapePhaseSub(p: ScrapeProgress | null): string {
+  if (!p) return "Scrape requested";
+  if (p.phase === "routine") return p.engineName ?? p.message;
+  if (p.phase === "details" || p.phase === "ai") {
+    return p.routineLabel ?? p.message;
+  }
+  return p.message;
+}
+
 export function AppLayout() {
   const { logout } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
@@ -49,7 +87,12 @@ export function AppLayout() {
   const isDetail = /^\/listings\/.+/.test(location.pathname);
   const onSettings = location.pathname.startsWith("/settings");
 
-  const [scraping, setScraping] = useState(false);
+  const [scrapeRequest, setScrapeRequest] = useState(false);
+  const [scrapeState, setScrapeState] = useState<{
+    inProgress: boolean;
+    progress: ScrapeProgress | null;
+  }>({ inProgress: false, progress: null });
+  const scrapeActive = scrapeRequest || scrapeState.inProgress;
   const [pushBusy, setPushBusy] = useState(false);
   const [pushOn, setPushOn] = useState(false);
   const [scraperUp, setScraperUp] = useState<boolean | null>(null);
@@ -67,22 +110,42 @@ export function AppLayout() {
     })();
   }, []);
 
+  // Poll scrape state — fast while running (live counters), slow when idle.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const s = await api.scrapeStatus();
+        if (!cancelled) setScrapeState(s);
+      } catch {
+        /* transient — keep last known state */
+      }
+    };
+    void poll();
+    const t = setInterval(() => void poll(), scrapeActive ? 1200 : 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [scrapeActive]);
+
   async function doScrap() {
-    setScraping(true);
+    setScrapeRequest(true);
     try {
       const res = await api.scrap();
       if (res.alreadyRunning) {
         toast.message("Scrape already running");
+        setScrapeState((s) => ({ ...s, inProgress: true }));
       } else if (res.started) {
-        toast.success("Scrape started — check Status for progress");
+        toast.success("Scrape started — progress shows here");
+        setScrapeState((s) => ({ ...s, inProgress: true }));
       } else {
         toast.message(res.message ?? "Scrape requested");
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to start scrape");
     } finally {
-      // Button only reflects request in flight, not full scrape duration
-      setScraping(false);
+      setScrapeRequest(false);
     }
   }
 
@@ -165,15 +228,39 @@ export function AppLayout() {
         </nav>
 
         <div className="space-y-2 border-t border-border/60 p-3">
-          <Button
-            className="w-full"
-            onClick={() => void doScrap()}
-            disabled={scraping}
-            aria-label="Run scrape now"
-          >
-            <RefreshCw className={cn("h-4 w-4", scraping && "animate-spin")} />
-            {scraping ? "Scraping…" : "Scrape now"}
-          </Button>
+          {scrapeActive ? (
+            <button
+              type="button"
+              onClick={() => navigate("/status")}
+              className="flex w-full items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-left transition-colors hover:bg-amber-500/20"
+              aria-label="Scrape in progress — open Status"
+              title="Open Status"
+            >
+              <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-600 dark:text-amber-400" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-medium">
+                  {scrapeRequest && !scrapeState.inProgress
+                    ? "Starting…"
+                    : scrapePhaseLine(scrapeState.progress)}
+                </span>
+                <span className="block truncate text-[11px] text-muted-foreground">
+                  {scrapeRequest && !scrapeState.inProgress
+                    ? "Requesting scrape…"
+                    : scrapePhaseSub(scrapeState.progress)}
+                </span>
+              </span>
+            </button>
+          ) : (
+            <Button
+              className="w-full"
+              onClick={() => void doScrap()}
+              disabled={scrapeRequest}
+              aria-label="Run scrape now"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Scrape now
+            </Button>
+          )}
 
           <div className="flex items-center gap-1">
             {isPushSupported() && (
@@ -228,17 +315,34 @@ export function AppLayout() {
           </NavLink>
 
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="default"
-              size="sm"
-              className="h-9 gap-1.5 rounded-full px-3.5 shadow-sm"
-              onClick={() => void doScrap()}
-              disabled={scraping}
-              aria-label="Run scrape now"
-            >
-              <RefreshCw className={cn("h-4 w-4", scraping && "animate-spin")} />
-              <span className="hidden sm:inline">{scraping ? "Scraping…" : "Scrape"}</span>
-            </Button>
+            {scrapeActive ? (
+              <button
+                type="button"
+                onClick={() => navigate("/status")}
+                className="flex h-9 items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-medium transition-colors hover:bg-amber-500/20"
+                aria-label="Scrape in progress — open Status"
+                title="Open Status"
+              >
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-600 dark:text-amber-400" />
+                <span className="max-w-[8.5rem] truncate">
+                  {scrapeRequest && !scrapeState.inProgress
+                    ? "Starting…"
+                    : scrapePhaseLine(scrapeState.progress)}
+                </span>
+              </button>
+            ) : (
+              <Button
+                variant="default"
+                size="sm"
+                className="h-9 gap-1.5 rounded-full px-3.5 shadow-sm"
+                onClick={() => void doScrap()}
+                disabled={scrapeRequest}
+                aria-label="Run scrape now"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span className="hidden sm:inline">Scrape</span>
+              </Button>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

@@ -73,6 +73,15 @@ export function jobRoutes(db: Database) {
   });
 
   /** Full status dashboard payload (latest 10 runs only). */
+  /** Lightweight scrape-state poll for the navbar — in-memory only, no DB/scraper calls. */
+  app.get("/scrape-status", requireAuth, (c) => {
+    const { scrapeInProgress, scrapeProgress } = getSchedulerStatus();
+    return c.json({
+      inProgress: scrapeInProgress === true,
+      progress: scrapeProgress ?? null,
+    });
+  });
+
   app.get("/status", requireAuth, async (c) => {
     let dbOk = false;
     let dbDetail = "";
