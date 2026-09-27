@@ -8,11 +8,19 @@ export type SettingType = "string" | "number" | "boolean" | "json";
 export const SETTING_KEYS = {
   apiToken: "api_token",
   scrapIntervalMinutes: "scrap_interval_minutes",
+  aiEnabled: "ai_enabled",
+  aiBaseUrl: "ai_base_url",
+  aiApiKey: "ai_api_key",
+  aiModel: "ai_model",
 } as const;
 
 /** Allowed scrape interval range (minutes). */
 export const SCRAP_INTERVAL_MIN = 1;
 export const SCRAP_INTERVAL_MAX = 24 * 60; // 1 day
+
+/** AI evaluation defaults (Ollama-compatible endpoint; cloud by default). */
+export const AI_DEFAULT_BASE_URL = "https://ollama.com";
+export const AI_DEFAULT_MODEL = "gemma4:31b";
 
 export async function getSetting(
   db: Database,
@@ -50,6 +58,13 @@ export async function setSetting(
 export async function getStringSetting(db: Database, key: string): Promise<string | null> {
   const row = await getSetting(db, key);
   return row?.value ?? null;
+}
+
+export async function getBooleanSetting(db: Database, key: string): Promise<boolean | null> {
+  const row = await getSetting(db, key);
+  if (!row) return null;
+  if (row.value === "true" || row.value === "false") return row.value === "true";
+  return null;
 }
 
 export async function getNumberSetting(db: Database, key: string): Promise<number | null> {

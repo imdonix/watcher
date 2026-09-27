@@ -12,7 +12,7 @@ import { notifyAll, transportsStatus } from "../services/notify";
 import { scraperHealth } from "../services/scraper-client";
 import { countSubscriptions, isPushConfigured } from "../services/push";
 import { log } from "../lib/time";
-import { ENGINES, ITEM_DETAILS_JOB_SLUG } from "@watcher/shared";
+import { AI_EVALUATION_JOB_SLUG, ENGINES, ITEM_DETAILS_JOB_SLUG } from "@watcher/shared";
 
 const STATUS_RUNS_LIMIT = 10;
 
@@ -46,6 +46,7 @@ function jobDisplayLabel(
   config: Record<string, unknown> | null | undefined,
 ): string | null {
   if (engineSlug === ITEM_DETAILS_JOB_SLUG) return "Item detail pages";
+  if (engineSlug === AI_EVALUATION_JOB_SLUG) return "AI evaluation";
   return routineLabel(config);
 }
 

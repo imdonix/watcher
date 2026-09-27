@@ -12,6 +12,7 @@ import { runScrapeJob } from "./scraper-client";
 import { notifyAfterScrape } from "./notify";
 import { ingestRoutineScrape } from "./listing-ingest";
 import { runItemDetailsJob } from "./item-details";
+import { runAiEvaluateJob } from "./ai";
 
 const STATE_ID = 1;
 
@@ -447,6 +448,44 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
     } catch (err) {
       anyIncomplete = true;
       logError("Processor", `item-details job failed: ${err}`);
+    }
+
+    // Special job: AI evaluation of listings (auxiliary — never fails the run)
+    try {
+      setProgress({
+        phase: "ai",
+        message: "Running AI evaluations…",
+        runId: run.id,
+        listingsSeen: totalSeen,
+        detailsIndex: null,
+        detailsTotal: null,
+      });
+
+      const aiJob = await runAiEvaluateJob(db, run.id, (info) => {
+        const shortName = info.name.length > 48 ? `${info.name.slice(0, 45)}…` : info.name;
+        setProgress({
+          phase: "ai",
+          message: `AI evaluation ${info.index}/${info.total}: ${shortName}`,
+          runId: run.id,
+          listingsSeen: totalSeen,
+          detailsIndex: info.index,
+          detailsTotal: info.total,
+          engineSlug: info.engineSlug,
+          engineName: info.engineSlug,
+          routineLabel: shortName,
+        });
+      });
+      if (aiJob.planned > 0) {
+        setProgress({
+          phase: "ai",
+          message: `AI evaluation finished: ${aiJob.evaluated} ok, ${aiJob.failed} failed`,
+          detailsIndex: aiJob.planned,
+          detailsTotal: aiJob.planned,
+          listingsSeen: totalSeen,
+        });
+      }
+    } catch (err) {
+      logError("Processor", `AI evaluation job failed: ${err}`);
     }
 
     setProgress({

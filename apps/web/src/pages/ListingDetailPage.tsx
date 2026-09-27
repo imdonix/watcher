@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Heart,
   Image as ImageIcon,
+  Sparkles,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -81,6 +82,7 @@ export function ListingDetailPage() {
   const [data, setData] = useState<ListingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
@@ -130,6 +132,35 @@ export function ListingDetailPage() {
       toast.error(err instanceof Error ? err.message : "Update failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function reevaluate() {
+    if (!listing) return;
+    setAiBusy(true);
+    try {
+      const res = await api.evaluateItem(listing.id);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              listing: {
+                ...prev.listing,
+                aiVerdict: res.listing.aiVerdict ?? null,
+                aiReason: res.listing.aiReason ?? null,
+                aiModel: res.listing.aiModel ?? null,
+                aiEvaluatedAt: res.listing.aiEvaluatedAt ?? null,
+              },
+            }
+          : prev,
+      );
+      toast.success(res.verdict.pass ? "AI evaluation: pass" : "AI evaluation: fail", {
+        description: res.verdict.reason || undefined,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "AI evaluation failed");
+    } finally {
+      setAiBusy(false);
     }
   }
 
@@ -219,6 +250,14 @@ export function ListingDetailPage() {
               )}
               {!listing.detailsScrapedAt && (
                 <Badge variant="secondary">Details pending</Badge>
+              )}
+              {listing.aiVerdict && (
+                <Badge
+                  variant={listing.aiVerdict === "pass" ? "success" : "destructive"}
+                  title={listing.aiReason ?? "AI evaluation"}
+                >
+                  AI {listing.aiVerdict}
+                </Badge>
               )}
             </div>
           </div>
@@ -358,6 +397,47 @@ export function ListingDetailPage() {
           <Card className="border-border/80 shadow-sm">
             <CardHeader className="pb-2">
               <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                <Sparkles className="h-4 w-4 text-muted-foreground" />
+                AI evaluation
+                {listing.aiVerdict && (
+                  <Badge
+                    variant={listing.aiVerdict === "pass" ? "success" : "destructive"}
+                    className="font-normal"
+                  >
+                    {listing.aiVerdict === "pass" ? "Pass" : "Fail"}
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                {listing.aiEvaluatedAt
+                  ? `${listing.aiModel ? `${listing.aiModel} · ` : ""}evaluated ${formatRelative(listing.aiEvaluatedAt)}`
+                  : "Not evaluated yet — needs an evaluation prompt on the routine and an API key in Settings."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {listing.aiReason && (
+                <p className="text-sm leading-relaxed text-foreground">{listing.aiReason}</p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                disabled={aiBusy}
+                onClick={() => void reevaluate()}
+              >
+                <Sparkles className="h-4 w-4" />
+                {aiBusy
+                  ? "Evaluating…"
+                  : listing.aiVerdict
+                    ? "Re-evaluate"
+                    : "Evaluate with AI"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">
                 Price history
                 {priceDelta != null && priceDelta !== 0 && (
                   <span className="inline-flex items-center gap-1 text-sm font-normal text-muted-foreground">

@@ -7,7 +7,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ScrapeRunJob, StatusResponse } from "@watcher/shared";
-import { ITEM_DETAILS_JOB_SLUG } from "@watcher/shared";
+import { AI_EVALUATION_JOB_SLUG, ITEM_DETAILS_JOB_SLUG } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
@@ -177,6 +177,14 @@ export function StatusPage() {
                     status.scheduler.scrapeProgress.detailsTotal > 0 && (
                       <span>
                         Details {status.scheduler.scrapeProgress.detailsIndex ?? 0}/
+                        {status.scheduler.scrapeProgress.detailsTotal}
+                      </span>
+                    )}
+                  {status.scheduler.scrapeProgress.phase === "ai" &&
+                    status.scheduler.scrapeProgress.detailsTotal != null &&
+                    status.scheduler.scrapeProgress.detailsTotal > 0 && (
+                      <span>
+                        AI {status.scheduler.scrapeProgress.detailsIndex ?? 0}/
                         {status.scheduler.scrapeProgress.detailsTotal}
                       </span>
                     )}
@@ -423,8 +431,12 @@ export function StatusPage() {
                                       <span className="truncate text-xs font-medium">
                                         {job.engineSlug === ITEM_DETAILS_JOB_SLUG
                                           ? "Item details"
-                                          : job.engineSlug}
-                                        {job.label && job.engineSlug !== ITEM_DETAILS_JOB_SLUG ? (
+                                          : job.engineSlug === AI_EVALUATION_JOB_SLUG
+                                            ? "AI evaluation"
+                                            : job.engineSlug}
+                                        {job.label &&
+                                        job.engineSlug !== ITEM_DETAILS_JOB_SLUG &&
+                                        job.engineSlug !== AI_EVALUATION_JOB_SLUG ? (
                                           <span className="font-normal text-muted-foreground">
                                             {" "}
                                             · {job.label}
@@ -442,7 +454,9 @@ export function StatusPage() {
                                       <span className="ml-1 text-xs font-normal text-muted-foreground">
                                         {job.engineSlug === ITEM_DETAILS_JOB_SLUG
                                           ? "scraped"
-                                          : "listings"}
+                                          : job.engineSlug === AI_EVALUATION_JOB_SLUG
+                                            ? "evaluated"
+                                            : "listings"}
                                       </span>
                                     </span>
                                   </div>

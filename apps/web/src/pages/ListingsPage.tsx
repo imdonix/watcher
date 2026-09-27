@@ -395,6 +395,23 @@ export function ListingsPage() {
                                 {status.text}
                               </span>
                             )}
+                            {item.aiVerdict && (
+                              <span
+                                title={
+                                  item.aiReason
+                                    ? `AI evaluation: ${item.aiReason}`
+                                    : "AI evaluation"
+                                }
+                                className={cn(
+                                  "cursor-help rounded-md px-1.5 py-0.5 text-[11px] font-medium",
+                                  item.aiVerdict === "pass"
+                                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300"
+                                    : "bg-red-100 text-red-800 dark:bg-red-950/70 dark:text-red-300",
+                                )}
+                              >
+                                {item.aiVerdict === "pass" ? "AI pass" : "AI fail"}
+                              </span>
+                            )}
                             {item.engineSlug && (
                               <Badge
                                 variant="outline"
