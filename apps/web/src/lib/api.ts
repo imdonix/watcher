@@ -2,6 +2,7 @@ import type {
   EngineMeta,
   ItemView,
   ListingDetailResponse,
+  ScrapeProgress,
   ScrapeRunJob,
   ScrapeRunSummary,
   StatusResponse,
@@ -111,6 +112,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ targetPrice }),
     });
+  },
+
+  scrapeStatus() {
+    return request<{ inProgress: boolean; progress: ScrapeProgress | null }>(
+      "/scrape-status",
+    );
   },
 
   scrap() {
