@@ -21,6 +21,10 @@ export async function dismissConsent(page: Page): Promise<void> {
     "button:has-text('Accept')",
     "#onetrust-accept-btn-handler",
     "button[mode='primary']:has-text('Elfogad')",
+    // Quantcast CMP (hardverapro.hu)
+    "#qc-cmp2-container .qc-cmp2-summary-buttons button[mode='primary']",
+    "button[mode='primary']:has-text('Összes')",
+    "button[mode='primary']:has-text('Elfogadom')",
   ];
 
   for (const sel of selectors) {

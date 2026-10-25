@@ -42,12 +42,21 @@ const ADVANCED_IDS = new Set([
   "extraFilters",
   "enableCompany",
   "enablePost",
+  "excludeKeywords",
+  "titleOnly",
+  "exactMatch",
+  "noIced",
+  "shippingOnly",
 ]);
 
 function routineTitle(r: Routine): string {
   const kw = r.keywords != null ? String(r.keywords).trim() : "";
   if (kw) return kw;
   if (r.location) return String(r.location);
+  if (r.category) {
+    const last = String(r.category).split("/").filter(Boolean).pop();
+    if (last) return last.replace(/[_-]+/g, " ");
+  }
   if (r.key) return `Search ${String(r.key).slice(0, 16)}…`;
   if (r.domain) {
     try {
@@ -327,7 +336,7 @@ export function RoutinesPage() {
           <EmptyState
             icon={<Settings2 className="h-6 w-6" />}
             title="No routines yet"
-            description="Create a search routine to start watching deals on jofogas, ingatlan.com or hasznaltauto."
+            description="Create a search routine to start watching deals on jofogas, ingatlan.com, hasznaltauto or hardverapro."
             action={
               <Button className="rounded-full" onClick={openNew}>
                 <Plus className="h-4 w-4" />
@@ -522,6 +531,7 @@ export function RoutinesPage() {
                   opt.id === "domain" ||
                   opt.id === "location" ||
                   opt.id === "key" ||
+                  opt.id === "category" ||
                   opt.id === "search") &&
                   "sm:col-span-2",
               )}

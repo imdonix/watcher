@@ -5,6 +5,7 @@ export const ENGINE_SLUGS = {
   jofogas: "jofogas.hu",
   ingatlan: "ingatlan.com",
   auto: "hasznaltauto.hu",
+  hardverapro: "hardverapro.hu",
 } as const;
 
 export type EngineSlug = (typeof ENGINE_SLUGS)[keyof typeof ENGINE_SLUGS];
@@ -258,6 +259,121 @@ export const ENGINES: EngineMeta[] = [
       },
     ],
   },
+  {
+    id: engineId(ENGINE_SLUGS.hardverapro),
+    slug: ENGINE_SLUGS.hardverapro,
+    name: "hardverapro.hu",
+    itemFields: [
+      "id",
+      "name",
+      "price",
+      "url",
+      "image",
+      "seller",
+      "location",
+      "company",
+      "featured",
+      "found",
+    ],
+    options: [
+      {
+        id: "keywords",
+        name: "Keywords",
+        type: "text",
+        placeholder: "rtx 3080",
+        description: "Search text (stext) on hardverapro.hu — leave empty to browse a category",
+      },
+      {
+        id: "category",
+        name: "Category path",
+        type: "text",
+        placeholder: "hardver/haz_tapegyseg/asztali_gep/tapegyseg/atx/1000w_felett",
+        description:
+          "Category segment from a listing URL after /aprok/ (e.g. hardver, mobil/telefon, hardver/videokartya). Optional — empty searches the whole site.",
+      },
+      {
+        id: "minPrice",
+        name: "Min price (Ft)",
+        type: "number",
+        placeholder: "0",
+      },
+      {
+        id: "maxPrice",
+        name: "Max price (Ft)",
+        type: "number",
+        placeholder: "150000",
+      },
+      {
+        id: "offerType",
+        name: "Offer type",
+        type: "select",
+        default: "",
+        choices: [
+          { value: "", label: "Any (keres + kínál)" },
+          { value: "sell", label: "Kínál (for sale) — buying=0" },
+          { value: "buy", label: "Keres (wanted) — buying=1" },
+        ],
+        description: "Restrict to listings offering items or users looking to buy them",
+      },
+      {
+        id: "condition",
+        name: "Condition",
+        type: "select",
+        default: "",
+        choices: [
+          { value: "", label: "Any (új + használt)" },
+          { value: "new", label: "Új — brandnew=1" },
+          { value: "used", label: "Használt — brandnew=0" },
+        ],
+      },
+      {
+        id: "excludeKeywords",
+        name: "Exclude words",
+        type: "text",
+        placeholder: "hibás, alkatrész",
+        description: "Listings containing any of these words are hidden (stext_none)",
+      },
+      {
+        id: "search",
+        name: "Advanced: full search URL",
+        type: "text",
+        placeholder: "https://hardverapro.hu/aprok/keres.php?stext=rtx+3080",
+        description: "If set, overrides the fields above — paste any results URL",
+      },
+      {
+        id: "shippingOnly",
+        name: "Shippable only",
+        type: "checkbox",
+        default: false,
+        description: "Only listings offering package delivery (Csomagküldéssel is)",
+      },
+      {
+        id: "titleOnly",
+        name: "Search in title only",
+        type: "checkbox",
+        default: false,
+      },
+      {
+        id: "exactMatch",
+        name: "Exact phrase match",
+        type: "checkbox",
+        default: false,
+      },
+      {
+        id: "noIced",
+        name: "Hide iced listings",
+        type: "checkbox",
+        default: true,
+        description: "Skip ads the seller put on hold (jegelve)",
+      },
+      {
+        id: "depth",
+        name: "Pages to scrape",
+        type: "number",
+        default: 2,
+      },
+    ],
+  },
 ];
 
 /** Convert HUF integer to ingatlan path million-Ft token (e.g. 30_000_000 → "30"). */
@@ -460,6 +576,108 @@ export function buildIngatlanSearchUrl(routine: Record<string, unknown>): string
   return `${INGATLAN_BASE}/${listBase}/${searchPath}`;
 }
 
+const HARDVERAPRO_BASE = "https://hardverapro.hu";
+
+/**
+ * Normalize a hardverapro.hu category into a clean path under `/aprok/`.
+ * Accepts a bare path (`hardver/videokartya`), a site path
+ * (`/aprok/hardver/videokartya/index.html`) or a full URL.
+ */
+export function normalizeHardveraproCategory(raw: unknown): string {
+  let s = String(raw ?? "").trim();
+  if (!s) return "";
+  try {
+    if (/^https?:\/\//i.test(s)) s = new URL(s).pathname;
+  } catch {
+    /* keep as-is */
+  }
+  return s
+    .replace(/[?#].*$/, "")
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/^aprok\//i, "")
+    .replace(/\/(index\.html|keres\.php)$/i, "")
+    .replace(/^\/+|\/+$/g, "");
+}
+
+/**
+ * Build a hardverapro.hu results URL.
+ *
+ * Listings live under `/aprok/<category>/`:
+ *   - `/aprok/<category>/index.html`              (browse, no query)
+ *   - `/aprok/<category>/keres.php?stext=…`       (search / filter)
+ * The advanced `search` field overrides everything when set.
+ *
+ * Pagination uses `?offset=N` (N items skipped); `offset` is exposed here so
+ * callers can jump to a page, but the scraper normally follows `rel="next"`.
+ */
+export function buildHardveraproSearchUrl(
+  routine: Record<string, unknown>,
+  offset = 0,
+): string {
+  const advanced = String(routine.search ?? "").trim();
+  if (advanced) {
+    const base = /^https?:\/\//i.test(advanced)
+      ? advanced
+      : `${HARDVERAPRO_BASE}/${advanced.replace(/^\/+/, "")}`;
+    if (offset <= 0) return base;
+    try {
+      const u = new URL(base);
+      u.searchParams.set("offset", String(offset));
+      return u.toString();
+    } catch {
+      return base;
+    }
+  }
+
+  const category = normalizeHardveraproCategory(routine.category);
+  const basePath = category ? `/aprok/${category}` : "/aprok";
+
+  const keywords = String(routine.keywords ?? "").trim();
+  const exclude = String(routine.excludeKeywords ?? "").trim();
+  const minPrice = optionalNumber(routine.minPrice);
+  const maxPrice = optionalNumber(routine.maxPrice);
+  const offerType = String(routine.offerType ?? "").trim().toLowerCase();
+  const condition = String(routine.condition ?? "").trim().toLowerCase();
+  const shippingOnly = Boolean(routine.shippingOnly);
+  const titleOnly = Boolean(routine.titleOnly);
+  const exactMatch = Boolean(routine.exactMatch);
+  const noIced = Boolean(routine.noIced);
+
+  const hasQuery =
+    Boolean(keywords || exclude) ||
+    minPrice != null ||
+    maxPrice != null ||
+    Boolean(offerType || condition) ||
+    shippingOnly ||
+    titleOnly ||
+    exactMatch ||
+    noIced;
+
+  const params = new URLSearchParams();
+  if (keywords) params.set("stext", keywords);
+  if (exclude) params.set("stext_none", exclude);
+  if (minPrice != null) params.set("minprice", String(minPrice));
+  if (maxPrice != null) params.set("maxprice", String(maxPrice));
+  if (offerType === "sell") params.set("buying", "0");
+  else if (offerType === "buy") params.set("buying", "1");
+  if (condition === "new") params.set("brandnew", "1");
+  else if (condition === "used") params.set("brandnew", "0");
+
+  // These toggles always appear in the site's own search links (default 0).
+  params.set("search_exac", exactMatch ? "1" : "0");
+  params.set("search_title", titleOnly ? "1" : "0");
+  params.set("shipping", shippingOnly ? "1" : "0");
+  params.set("noiced", noIced ? "1" : "0");
+
+  const endpoint = hasQuery ? "keres.php" : "index.html";
+  const qs = hasQuery ? params.toString() : "";
+  if (offset > 0) {
+    const extra = qs ? `&offset=${offset}` : `offset=${offset}`;
+    return `${HARDVERAPRO_BASE}${basePath}/${endpoint}?${qs ? `${qs}${extra}` : extra}`;
+  }
+  return `${HARDVERAPRO_BASE}${basePath}/${endpoint}${qs ? `?${qs}` : ""}`;
+}
+
 export type RoutinePreview = {
   /** Absolute URL the scraper will open (page 1 when paginated). */
   url: string | null;
@@ -504,6 +722,16 @@ export function buildRoutinePreview(
     }
     const path = `/${listBase}/${searchPath}`;
     return { url: `${INGATLAN_BASE}${path}`, path };
+  }
+
+  if (slug === ENGINE_SLUGS.hardverapro || slug === "hardverapro.hu") {
+    const url = buildHardveraproSearchUrl(routine, 0);
+    try {
+      const u = new URL(url);
+      return { url, path: `${u.pathname}${u.search}` };
+    } catch {
+      return { url, path: url };
+    }
   }
 
   if (slug === ENGINE_SLUGS.auto || slug === "hasznaltauto.hu") {

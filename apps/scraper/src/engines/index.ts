@@ -3,8 +3,14 @@ import type { EngineScraper } from "./types";
 import { jofogasEngine } from "./jofogas";
 import { ingatlanEngine } from "./ingatlan";
 import { autoEngine } from "./auto";
+import { hardveraproEngine } from "./hardverapro";
 
-const scrapers: EngineScraper[] = [jofogasEngine, ingatlanEngine, autoEngine];
+const scrapers: EngineScraper[] = [
+  jofogasEngine,
+  ingatlanEngine,
+  autoEngine,
+  hardveraproEngine,
+];
 
 export function getScraper(slugOrName: string): EngineScraper | undefined {
   const key = slugOrName.toLowerCase();

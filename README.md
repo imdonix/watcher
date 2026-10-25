@@ -1,6 +1,6 @@
 # Watcher
 
-Monorepo rewrite of the deal-watcher app. Scrapes **jofogas.hu**, **ingatlan.com**, and **hasznaltauto.hu**, stores new listings in Postgres, and notifies via the API logger (console).
+Monorepo rewrite of the deal-watcher app. Scrapes **jofogas.hu**, **ingatlan.com**, **hasznaltauto.hu**, and **hardverapro.hu**, stores new listings in Postgres, and notifies via the API logger (console).
 
 ## Architecture
 
@@ -77,6 +77,18 @@ Builds `/lista/{segments}` (or legacy `/szukites/`) from form fields:
 - `key` — segment from the results URL
 - `keywords` — UI label
 - `depth` — pages
+
+### hardverapro.hu
+Builds `/aprok[/<category>]/keres.php` (or the browse page when no query is set):
+- `keywords` — search text (`stext`), `excludeKeywords` — hidden words (`stext_none`), `titleOnly`, `exactMatch`
+- `category` — path segment under `/aprok/` (e.g. `hardver/videokartya`); empty searches the whole site
+- `minPrice` / `maxPrice` (Ft), `offerType` (kínál/keres), `condition` (új/használt)
+- `shippingOnly` (csomagküldés), `noIced` (hide reserved ads), `depth` — pages
+- optional advanced full search URL override
+
+> Note: hardverapro serves filtered search results only to a "warmed-up" session — a
+> fresh session is `302`-redirected to the unfiltered browse page. The engine detects
+> this and retries the search URL until the real (filtered) page is returned.
 
 ## Configuration
 

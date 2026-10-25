@@ -2,7 +2,7 @@
   "name": "watcher",
   "version": "1.0.0",
   "private": true,
-  "description": "Deal watcher monorepo — scrape jofogas, ingatlan, hasznaltauto and get notified",
+  "description": "Deal watcher monorepo — scrape jofogas, ingatlan, hasznaltauto, hardverapro and get notified",
   "workspaces": [
     "packages/*",
     "apps/*"
