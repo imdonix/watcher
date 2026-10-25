@@ -49,11 +49,13 @@ export const listings = pgTable("listings", {
   /** active = last complete scrape still saw it; missing = absent after a complete scrape */
   status: varchar("status", { length: 16 }).notNull().default("active"),
   /**
-   * User dismissed this listing. Same UI treatment as missing.
-   * Cleared automatically when price changes (treated as "new" again).
+   * Hidden from the potential-products feed. Set by the user, or automatically
+   * when the AI verdict is fail. Price changes only clear manual hides.
    */
   notInterested: boolean("not_interested").notNull().default(false),
   notInterestedAt: timestamp("not_interested_at", { withTimezone: true }),
+  /** Why it is hidden: "user" (manual) or "ai" (automatic rejection). */
+  notInterestedReason: varchar("not_interested_reason", { length: 16 }),
   firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
   lastPrice: integer("last_price"),
@@ -70,7 +72,10 @@ export const listings = pgTable("listings", {
   details: jsonb("details").$type<Record<string, unknown> | null>(),
   /** Set after a completed detail attempt (success or fail) — never re-scraped. */
   detailsScrapedAt: timestamp("details_scraped_at", { withTimezone: true }),
-  /** AI evaluation verdict: pass | fail (null = not evaluated) — derived from aiScore >= threshold */
+  /**
+   * AI evaluation verdict: pass | fail (null = not evaluated) — derived from
+   * aiScore >= threshold. A fail also hides the listing (notInterested).
+   */
   aiVerdict: varchar("ai_verdict", { length: 16 }),
   /** AI relevance score 0-100 (null = not evaluated) */
   aiScore: smallint("ai_score"),

@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  ArrowUpDown,
+  ArrowLeft,
   Ban,
-  Check,
   ExternalLink,
   EyeOff,
   Image as ImageIcon,
@@ -34,45 +33,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
-import { StatCard } from "@/components/StatCard";
-import { ListingSkeleton, TileSkeleton } from "@/components/Skeleton";
+import { ListingSkeleton } from "@/components/Skeleton";
 
-type Filter = "available" | "all" | "unavailable";
-type Sort = "newest" | "price-asc" | "price-desc" | "ai-score";
-
-const SORT_LABEL: Record<Sort, string> = {
-  newest: "Newest first",
-  "price-asc": "Price: low to high",
-  "price-desc": "Price: high to low",
-  "ai-score": "AI score",
-};
-
-function isUnavailable(item: ItemView): boolean {
-  return item.status === "missing" || Boolean(item.notInterested);
-}
+const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function priceLabel(item: ItemView): string {
   if (typeof item.priceFormatted === "string") return item.priceFormatted;
   return formatPrice(item.price as number | string | null);
 }
 
+function isNew(item: ItemView): boolean {
+  const t = new Date(String(item.firstSeenAt)).getTime();
+  return Number.isFinite(t) && Date.now() - t < NEW_WINDOW_MS;
+}
+
 export function ListingsPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ItemView[]>([]);
-  const [filter, setFilter] = useState<Filter>("available");
-  const [sort, setSort] = useState<Sort>("newest");
   const [query, setQuery] = useState("");
+  const [showHidden, setShowHidden] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -111,63 +93,30 @@ export function ListingsPage() {
     [],
   );
 
-  const counts = useMemo(() => {
-    const c = { available: 0, all: items.length, unavailable: 0 };
-    for (const item of items) {
-      if (isUnavailable(item)) c.unavailable++;
-      else c.available++;
-    }
-    return c;
-  }, [items]);
-
-  const stats = useMemo(() => {
-    let drops = 0;
-    let aiPass = 0;
-    for (const item of items) {
-      if (
-        typeof item.prevPrice === "number" &&
-        typeof item.price === "number" &&
-        item.prevPrice > item.price
-      ) {
-        drops++;
-      }
-      if (typeof item.aiScore === "number" && item.aiScore >= passThreshold) aiPass++;
-    }
-    return { drops, aiPass };
-  }, [items, passThreshold]);
+  /** Potential products only — AI rejects and manual dismissals are excluded. */
+  const active = useMemo(
+    () => items.filter((i) => i.status === "active" && !i.notInterested),
+    [items],
+  );
+  const hidden = useMemo(() => items.filter((i) => i.notInterested), [items]);
+  const source = showHidden ? hidden : active;
 
   const visible = useMemo(() => {
-    let rows =
-      filter === "available"
-        ? items.filter((i) => !isUnavailable(i))
-        : filter === "unavailable"
-          ? items.filter(isUnavailable)
-          : items;
-
     const q = query.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter(
-        (i) =>
-          String(i.name).toLowerCase().includes(q) ||
-          String(i.engineSlug ?? "").toLowerCase().includes(q),
-      );
-    }
+    const rows = q
+      ? source.filter(
+          (i) =>
+            String(i.name).toLowerCase().includes(q) ||
+            String(i.engineSlug ?? "").toLowerCase().includes(q),
+        )
+      : source;
+    return [...rows].sort(
+      (a, b) =>
+        new Date(String(b.firstSeenAt)).getTime() - new Date(String(a.firstSeenAt)).getTime(),
+    );
+  }, [source, query]);
 
-    const priceOf = (i: ItemView) =>
-      typeof i.price === "number" ? i.price : Number.MAX_SAFE_INTEGER;
-    const scoreOf = (i: ItemView) => (typeof i.aiScore === "number" ? i.aiScore : -1);
-    const sorted = [...rows];
-    if (sort === "price-asc") sorted.sort((a, b) => priceOf(a) - priceOf(b));
-    else if (sort === "price-desc") sorted.sort((a, b) => priceOf(b) - priceOf(a));
-    else if (sort === "ai-score") sorted.sort((a, b) => scoreOf(b) - scoreOf(a));
-    else
-      sorted.sort(
-        (a, b) =>
-          new Date(String(b.firstSeenAt)).getTime() -
-          new Date(String(a.firstSeenAt)).getTime(),
-      );
-    return sorted;
-  }, [items, filter, query, sort]);
+  const newCount = useMemo(() => active.filter(isNew).length, [active]);
 
   function openDetails(id: string) {
     navigate(`/listings/${encodeURIComponent(id)}`);
@@ -186,11 +135,6 @@ export function ListingsPage() {
     });
   }
 
-  /**
-   * Play the exit animation, then flip the row's fields instead of removing it
-   * — filters/counts recompute from `items`, so the listing shows up under the
-   * other tab without a refetch.
-   */
   function flipAfterExit(id: string, patch: Partial<ItemView>, startedAt: number, delayMs = 220) {
     const existing = flipTimers.current.get(id);
     if (existing) window.clearTimeout(existing);
@@ -227,11 +171,11 @@ export function ListingsPage() {
         {
           notInterested: true,
           notInterestedAt: new Date().toISOString(),
-          available: item.status === "active",
+          available: false,
         },
         started,
       );
-      toast("Hidden as not interested", {
+      toast("Hidden", {
         description: "Find it under Hidden",
         action: {
           label: "Undo",
@@ -269,7 +213,7 @@ export function ListingsPage() {
         { notInterested: false, notInterestedAt: null, available: item.status === "active" },
         started,
       );
-      toast.success("Tracking again");
+      toast.success("Back in potential products");
     } catch (err) {
       clearExiting(item.id);
       toast.error(err instanceof Error ? err.message : "Update failed");
@@ -279,191 +223,124 @@ export function ListingsPage() {
     }
   }
 
+  function switchView(hiddenView: boolean) {
+    setShowHidden(hiddenView);
+    setQuery("");
+  }
+
   if (loading) {
     return (
       <div className="space-y-5">
         <PageHeader
           title="Listings"
-          description="Every deal your routines have found, ranked and searchable."
+          description="Loading potential products…"
         />
-        <TileSkeleton />
-        <ListingSkeleton count={6} />
+        <ListingSkeleton count={5} />
       </div>
     );
   }
 
-  const emptyState = query ? (
+  const filtered = query.trim().length > 0;
+
+  const emptyState = filtered ? (
     <EmptyState
       icon={<Search className="size-5" />}
       title="No matches"
       description={`Nothing matches “${query.trim()}” in ${
-        filter === "available" ? "Active" : filter === "unavailable" ? "Hidden" : "All"
-      } listings.`}
+        showHidden ? "hidden listings" : "potential products"
+      }.`}
       action={
         <Button variant="outline" size="sm" onClick={() => setQuery("")}>
           Clear search
         </Button>
       }
     />
+  ) : showHidden ? (
+    <EmptyState
+      icon={<EyeOff className="size-5" />}
+      title="Nothing hidden"
+      description="Listings the AI rejects or you dismiss are collected here so you can restore them."
+      action={
+        <Button variant="outline" size="sm" onClick={() => switchView(false)}>
+          Back to potential products
+        </Button>
+      }
+    />
   ) : (
     <EmptyState
       icon={<LayoutList className="size-5" />}
-      title={
-        filter === "available"
-          ? "No active listings"
-          : filter === "unavailable"
-            ? "Nothing hidden"
-            : "No listings yet"
-      }
-      description={
-        filter === "available"
-          ? "New finds from scrapes show up here. Dismissed ones move to Hidden."
-          : filter === "unavailable"
-            ? "Listings you mark as not interested will be collected here."
-            : "Configure a routine and run a scrape to start tracking deals."
-      }
+      title="No potential products"
+      description="New finds from the next scrape will show up here. Listings the AI decides are not a match are hidden automatically."
       action={
-        filter === "unavailable" || filter === "all" ? (
-          <Button variant="outline" size="sm" onClick={() => navigate("/routines")}>
-            Manage routines
-          </Button>
-        ) : undefined
+        <Button variant="outline" size="sm" onClick={() => void load({ soft: true })}>
+          <RefreshCw className={cn(refreshing && "animate-spin")} />
+          Refresh
+        </Button>
       }
     />
   );
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <PageHeader
-        title="Listings"
+        title={showHidden ? "Hidden listings" : "Listings"}
         description={
-          items.length > 0
-            ? `${counts.available} active · ${counts.unavailable} hidden · ${counts.all} tracked in total`
-            : "Every deal your routines have found, ranked and searchable."
+          showHidden
+            ? `${hidden.length} hidden listing${hidden.length === 1 ? "" : "s"} · restore anything the AI got wrong.`
+            : `${active.length} potential product${active.length === 1 ? "" : "s"}, newest first${
+                newCount > 0 ? ` · ${newCount} new in the last 24h` : ""
+              }. AI rejects are hidden automatically.`
         }
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void load({ soft: true })}
-            disabled={refreshing}
-          >
-            <RefreshCw className={cn(refreshing && "animate-spin")} />
-            <span>Refresh</span>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {!showHidden && hidden.length > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => switchView(true)}>
+                <EyeOff />
+                Hidden ({hidden.length})
+              </Button>
+            )}
+            {showHidden && (
+              <Button variant="secondary" size="sm" onClick={() => switchView(false)}>
+                <ArrowLeft />
+                Potential
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void load({ soft: true })}
+              disabled={refreshing}
+            >
+              <RefreshCw className={cn(refreshing && "animate-spin")} />
+              <span>Refresh</span>
+            </Button>
+          </div>
         }
       />
 
-      {items.length > 0 && (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-          <StatCard
-            label="Active"
-            value={counts.available}
-            icon={<LayoutList />}
-            tone="primary"
-            hint="Visible on Active"
+      {source.length > 0 && (
+        <div className="relative max-w-md">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={showHidden ? "Search hidden listings…" : "Search potential products…"}
+            aria-label={showHidden ? "Search hidden listings" : "Search potential products"}
+            className="h-9 pl-8 pr-8"
           />
-          <StatCard
-            label="Hidden"
-            value={counts.unavailable}
-            icon={<EyeOff />}
-            hint="Dismissed or gone"
-          />
-          <StatCard
-            label="Price drops"
-            value={stats.drops}
-            icon={<TrendingDown />}
-            tone={stats.drops > 0 ? "success" : "muted"}
-            hint="Since first seen"
-          />
-          <StatCard
-            label="AI pass"
-            value={stats.aiPass}
-            icon={<Sparkles />}
-            tone={stats.aiPass > 0 ? "primary" : "muted"}
-            hint={`Score ≥ ${passThreshold}`}
-          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Clear search"
+              className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
         </div>
       )}
-
-      {/* Controls */}
-      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-xs">
-        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <Tabs
-            value={filter}
-            onValueChange={(v) => setFilter(v as Filter)}
-            className="w-full sm:w-auto"
-          >
-            <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:flex">
-              <TabsTrigger value="available">
-                Active
-                <span className="tabular-nums text-muted-foreground">{counts.available}</span>
-              </TabsTrigger>
-              <TabsTrigger value="all">
-                All
-                <span className="tabular-nums text-muted-foreground">{counts.all}</span>
-              </TabsTrigger>
-              <TabsTrigger value="unavailable">
-                Hidden
-                <span className="tabular-nums text-muted-foreground">{counts.unavailable}</span>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <span className="hidden text-xs text-muted-foreground sm:inline">
-            {visible.length} listing{visible.length === 1 ? "" : "s"}
-            {refreshing && " · refreshing…"}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by title or site…"
-              aria-label="Search listings"
-              className="h-9 pl-8 pr-8"
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-                className="absolute right-1 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <X className="size-3.5" />
-              </button>
-            )}
-          </div>
-
-          <Select value={sort} onValueChange={(v) => setSort(v as Sort)}>
-            <SelectTrigger
-              size="sm"
-              className="h-9 w-9 shrink-0 justify-center px-0 text-xs [&>svg:last-child]:hidden sm:w-[11.5rem] sm:justify-between sm:px-3 sm:[&>svg:last-child]:block"
-              aria-label={`Sort: ${SORT_LABEL[sort]}`}
-              title={`Sort: ${SORT_LABEL[sort]}`}
-            >
-              <ArrowUpDown className="size-4 shrink-0 text-muted-foreground" />
-              <span className="hidden min-w-0 truncate sm:block">
-                <SelectValue />
-              </span>
-            </SelectTrigger>
-            <SelectContent align="end">
-              {(Object.keys(SORT_LABEL) as Sort[]).map((key) => (
-                <SelectItem key={key} value={key}>
-                  {SORT_LABEL[key]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <span className="text-xs text-muted-foreground sm:hidden">
-          {visible.length} listing{visible.length === 1 ? "" : "s"}
-          {refreshing && " · refreshing…"}
-        </span>
-      </div>
 
       {visible.length === 0 ? (
         emptyState
@@ -472,8 +349,8 @@ export function ListingsPage() {
           <ul className="divide-y divide-border/70">
             {visible.map((item) => {
               const leaving = exiting.has(item.id);
-              const unavailable = isUnavailable(item);
               const imgBroken = brokenImages.has(item.id);
+              const fresh = !showHidden && isNew(item);
               const dropped =
                 typeof item.prevPrice === "number" &&
                 typeof item.price === "number" &&
@@ -488,7 +365,6 @@ export function ListingsPage() {
                   className={cn(
                     "group relative flex gap-3 p-3 transition-all duration-200 ease-out hover:bg-muted/35 sm:gap-4 sm:p-4",
                     leaving && "pointer-events-none -translate-x-2 scale-[0.99] opacity-0",
-                    unavailable && "opacity-90",
                   )}
                 >
                   <div className="relative size-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-muted sm:size-24">
@@ -536,11 +412,12 @@ export function ListingsPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {item.notInterested ? (
-                        <Badge variant="secondary">Hidden</Badge>
-                      ) : item.status === "missing" ? (
-                        <Badge variant="warning">Gone</Badge>
-                      ) : null}
+                      {fresh && <Badge variant="info">New</Badge>}
+                      {showHidden && (
+                        <Badge variant="secondary">
+                          {item.notInterestedReason === "ai" ? "Hidden by AI" : "Hidden"}
+                        </Badge>
+                      )}
                       {dropped != null && (
                         <Badge variant="success">
                           <TrendingDown className="size-3" />-{formatPrice(dropped)}
@@ -655,13 +532,6 @@ export function ListingsPage() {
             })}
           </ul>
         </div>
-      )}
-
-      {visible.length > 0 && (
-        <p className="flex items-center justify-center gap-1.5 pb-1 text-[11px] text-muted-foreground">
-          <Check className="size-3" />
-          Showing {visible.length} of {items.length} tracked listings
-        </p>
       )}
     </div>
   );

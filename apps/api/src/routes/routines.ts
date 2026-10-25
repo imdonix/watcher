@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { listings, searchRoutines, type Database } from "@watcher/db";
 import { findEngineById } from "@watcher/shared";
 import { requireAuth, type AuthEnv } from "../middleware/auth";
@@ -94,6 +94,23 @@ export function routineRoutes(db: Database) {
         .map((id) => findEngineById(id)?.slug)
         .filter((s): s is string => Boolean(s));
       if (slugs.length > 0) {
+        const now = new Date();
+        // Give listings hidden by the old prompt's AI verdict another chance:
+        // restore them before clearing the verdict so the next scrape re-scores
+        // them against the new prompt.
+        const restored = await db
+          .update(listings)
+          .set({
+            notInterested: false,
+            notInterestedAt: null,
+            notInterestedReason: null,
+            updatedAt: now,
+          })
+          .where(
+            and(inArray(listings.engineSlug, slugs), eq(listings.notInterestedReason, "ai")),
+          )
+          .returning({ id: listings.id });
+
         await db
           .update(listings)
           .set({
@@ -102,9 +119,16 @@ export function routineRoutes(db: Database) {
             aiReason: null,
             aiModel: null,
             aiEvaluatedAt: null,
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .where(inArray(listings.engineSlug, slugs));
+
+        if (restored.length > 0) {
+          log(
+            "API",
+            `restored ${restored.length} AI-hidden listing(s) for engine(s) ${slugs.join(", ")} (prompt changed)`,
+          );
+        }
         log("API", `AI verdicts cleared for engine(s) ${slugs.join(", ")} (prompt changed)`);
       }
     }

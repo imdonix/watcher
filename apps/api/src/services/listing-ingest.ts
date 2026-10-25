@@ -142,10 +142,12 @@ export async function ingestRoutineScrape(
         updates.priceChangedAt = now;
       }
 
-      // Price change re-opens interest (same listing, "new" deal to the user)
-      if (priceChanged && row.notInterested) {
+      // Price change re-opens manually hidden listings ("new" deal for the
+      // user). AI-rejected listings stay hidden — the product itself is wrong.
+      if (priceChanged && row.notInterested && row.notInterestedReason !== "ai") {
         updates.notInterested = false;
         updates.notInterestedAt = null;
+        updates.notInterestedReason = null;
         log("Ingest", `listing ${id}: price change cleared not_interested`);
       }
 

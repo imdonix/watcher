@@ -47,9 +47,26 @@ export async function notifyAfterScrape(
     .innerJoin(listings, eq(listingEvents.listingId, listings.id))
     .where(eq(listingEvents.notified, false));
 
+  // A listing hidden by the user or by the AI must never be pushed, even if
+  // it was first seen in this run. Drain those events silently.
+  const hidden = pending.filter((p) => p.listing.notInterested);
+  for (const { event } of hidden) {
+    await db
+      .update(listingEvents)
+      .set({ notified: true })
+      .where(eq(listingEvents.id, event.id));
+  }
+  if (hidden.length > 0) {
+    log(
+      "Notify",
+      `post-scrape (${scrapeStatus}) — suppressed ${hidden.length} hidden-listing event(s)`,
+    );
+  }
+
+  const visible = pending.filter((p) => !p.listing.notInterested);
   const kinds = NOTIFY_KINDS as readonly string[];
-  const toNotify = pending.filter((p) => kinds.includes(p.event.kind));
-  const toSilence = pending.filter((p) => !kinds.includes(p.event.kind));
+  const toNotify = visible.filter((p) => kinds.includes(p.event.kind));
+  const toSilence = visible.filter((p) => !kinds.includes(p.event.kind));
 
   // Drain non-notify events so they never surface as "findings"
   for (const { event } of toSilence) {

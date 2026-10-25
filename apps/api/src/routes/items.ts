@@ -19,6 +19,7 @@ function mapListing(row: typeof listings.$inferSelect, sightingCount = 0) {
     status: row.status,
     notInterested: row.notInterested,
     notInterestedAt: row.notInterestedAt,
+    notInterestedReason: (row.notInterestedReason as "user" | "ai" | null) ?? null,
     available,
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
@@ -126,6 +127,7 @@ export function itemRoutes(db: Database) {
       .set({
         notInterested: markDismissed,
         notInterestedAt: markDismissed ? now : null,
+        notInterestedReason: markDismissed ? "user" : null,
         updatedAt: now,
       })
       .where(eq(listings.id, id))

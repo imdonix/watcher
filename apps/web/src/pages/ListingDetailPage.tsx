@@ -230,6 +230,7 @@ export function ListingDetailPage() {
 
   async function reevaluate() {
     if (!listing) return;
+    const wasHiddenByAi = listing.notInterested && listing.notInterestedReason === "ai";
     setAiBusy(true);
     try {
       const res = await api.evaluateItem(listing.id);
@@ -244,13 +245,28 @@ export function ListingDetailPage() {
                 aiReason: res.listing.aiReason ?? null,
                 aiModel: res.listing.aiModel ?? null,
                 aiEvaluatedAt: res.listing.aiEvaluatedAt ?? null,
+                notInterested: res.listing.notInterested,
+                notInterestedAt: res.listing.notInterestedAt ?? null,
+                notInterestedReason: res.listing.notInterestedReason ?? null,
               },
             }
           : prev,
       );
-      toast.success(`AI score ${res.verdict.score} — ${res.verdict.pass ? "pass" : "fail"}`, {
-        description: res.verdict.reason || undefined,
-      });
+
+      if (!res.verdict.pass) {
+        toast.success(`AI score ${res.verdict.score} — hidden as not a match`, {
+          description:
+            res.verdict.reason || "It will no longer appear in potential products.",
+        });
+      } else if (wasHiddenByAi && !res.listing.notInterested) {
+        toast.success(`AI score ${res.verdict.score} — pass · restored`, {
+          description: res.verdict.reason || "Back in potential products.",
+        });
+      } else {
+        toast.success(`AI score ${res.verdict.score} — pass`, {
+          description: res.verdict.reason || undefined,
+        });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "AI evaluation failed");
     } finally {
@@ -607,9 +623,24 @@ export function ListingDetailPage() {
             <CardContent className="space-y-3">
               {listing.notInterested && (
                 <div className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-                  Hidden as not interested
-                  {listing.notInterestedAt ? ` ${formatRelative(listing.notInterestedAt)}` : ""}.
-                  A price change restores it automatically.
+                  {listing.notInterestedReason === "ai" ? (
+                    <>
+                      <span className="font-medium text-foreground">Hidden by the AI evaluation</span>
+                      {listing.notInterestedAt
+                        ? ` ${formatRelative(listing.notInterestedAt)}`
+                        : ""}
+                      {listing.aiReason ? ` — ${listing.aiReason}` : "."} It stays hidden after
+                      price changes; restore it if the AI got it wrong.
+                    </>
+                  ) : (
+                    <>
+                      Hidden as not interested
+                      {listing.notInterestedAt
+                        ? ` ${formatRelative(listing.notInterestedAt)}`
+                        : ""}
+                      . A price change restores it automatically.
+                    </>
+                  )}
                 </div>
               )}
               <div ref={summaryActionsRef} className="flex flex-wrap gap-2">{actions}</div>
@@ -978,7 +1009,13 @@ export function ListingDetailPage() {
                 />
                 <GlanceRow
                   label="Interest"
-                  value={listing.notInterested ? "Dismissed" : "Tracking"}
+                  value={
+                    listing.notInterested
+                      ? listing.notInterestedReason === "ai"
+                        ? "Hidden by AI"
+                        : "Dismissed"
+                      : "Tracking"
+                  }
                 />
                 <GlanceRow label="Site" value={formatEngine(listing.engineSlug) || "—"} />
                 <GlanceRow label="First seen" value={formatDateTime(listing.firstSeenAt)} />

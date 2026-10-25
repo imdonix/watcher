@@ -305,6 +305,14 @@ export async function evaluateListing(
 
   const verdict = await callAiModel(cfg, chosen.prompt, row);
   const now = new Date();
+
+  // Not a match → hide it like a dismissed listing, so it disappears from the
+  // potential-products feed. Never overwrite a timestamp the user already set.
+  const autoHide = !verdict.pass && !row.notInterested;
+  // A re-evaluation that now passes re-opens listings hidden by a previous
+  // AI fail. User-dismissed listings stay dismissed.
+  const autoRestore = verdict.pass && row.notInterested && row.notInterestedReason === "ai";
+
   await db
     .update(listings)
     .set({
@@ -314,8 +322,20 @@ export async function evaluateListing(
       aiModel: cfg.model,
       aiEvaluatedAt: now,
       updatedAt: now,
+      ...(autoHide
+        ? { notInterested: true, notInterestedAt: now, notInterestedReason: "ai" }
+        : {}),
+      ...(autoRestore
+        ? { notInterested: false, notInterestedAt: null, notInterestedReason: null }
+        : {}),
     })
     .where(eq(listings.id, row.id));
+
+  if (autoHide) {
+    log("AI", `auto-hidden ${row.engineSlug} ${row.id} (score ${verdict.score})`);
+  } else if (autoRestore) {
+    log("AI", `auto-restored ${row.engineSlug} ${row.id} (score ${verdict.score})`);
+  }
 
   return { ...verdict, model: cfg.model };
 }

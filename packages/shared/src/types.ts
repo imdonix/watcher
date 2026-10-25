@@ -100,9 +100,11 @@ export interface ItemView {
   priceFormatted?: string;
   engineSlug?: string;
   status: ListingStatus;
-  /** User dismissed; same UI as unavailable until price changes */
+  /** Hidden from the potential-products feed (user dismissal or AI reject) */
   notInterested?: boolean;
   notInterestedAt?: string | null;
+  /** Why it is hidden: "user" (manual) or "ai" (automatic rejection) */
+  notInterestedReason?: "user" | "ai" | null;
   /** status===active && !notInterested */
   available?: boolean;
   firstSeenAt?: string;
