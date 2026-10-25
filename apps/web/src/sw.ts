@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { clientsClaim } from "workbox-core";
+import type { RouteHandlerCallbackOptions } from "workbox-core/types.js";
 import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from "workbox-precaching";
 import { registerRoute, NavigationRoute } from "workbox-routing";
 
@@ -8,43 +9,65 @@ declare let self: ServiceWorkerGlobalScope;
 // Drop old Workbox/runtime caches from previous deploys
 cleanupOutdatedCaches();
 
-// Hashed build assets live here; each deploy gets a new SW revision
+// Hashed build assets live here; each deploy gets a new SW revision.
+// The precache is self-consistent: the HTML and the chunks it references are
+// installed together, so the offline shell can never point at missing files.
 precacheAndRoute(self.__WB_MANIFEST);
 
 // Take over open tabs as soon as this SW activates
 clientsClaim();
 
-self.addEventListener("install", (event) => {
-  // Activate immediately — do not wait for all tabs to close
-  event.waitUntil(self.skipWaiting());
-});
-
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       await self.clients.claim();
-      // Remove any non-precache caches left by older SW versions
+      // Remove leftovers from much older SW versions. Never delete
+      // "workbox-precache-*": that is the cache this worker just populated.
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((k) => k.startsWith("pages") || k.startsWith("assets") || k.startsWith("workbox-"))
+          .filter((k) => k.startsWith("pages") || k.startsWith("assets"))
           .map((k) => caches.delete(k)),
       );
     })(),
   );
 });
 
-// SPA navigations: always try network first for HTML, fall back to precached index
-const htmlHandler = createHandlerBoundToURL("/index.html");
+// NOTE: no self.skipWaiting() on install. Activating a new worker mid-session
+// swaps HTML/chunks under the running page (and forces reloads); on iOS this
+// can leave the PWA on a blank white/black screen, especially around a back
+// navigation. The page sends SKIP_WAITING when the user applies an update.
+
+// SPA navigations: always try the network first so a fresh deploy is picked up
+// immediately. Serving the precached index.html first (the old behaviour) can
+// hand the browser an old document that references chunks which no longer
+// exist after a deploy — a blank screen. Precache is only the offline fallback.
+const offlineShell = createHandlerBoundToURL("/index.html");
+
+const NAVIGATION_TIMEOUT_MS = 4000;
+
+async function navigationHandler(options: RouteHandlerCallbackOptions) {
+  const { request } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NAVIGATION_TIMEOUT_MS);
+  try {
+    const response = await fetch(request, { signal: controller.signal });
+    if (response && response.ok) return response;
+  } catch {
+    /* offline, aborted or flaky network — use the precached shell below */
+  } finally {
+    clearTimeout(timer);
+  }
+
+  return offlineShell(options);
+}
+
 registerRoute(
-  new NavigationRoute(htmlHandler, {
+  new NavigationRoute(navigationHandler, {
     // Don't handle API or SW itself
     denylist: [/^\/api\//, /\/sw\.js$/, /\/workbox-.*\.js$/],
   }),
 );
-
-// Do NOT CacheFirst JS/CSS — precache already versions them.
-// Extra CacheFirst routes were serving stale bundles forever.
 
 interface PushData {
   title?: string;
@@ -111,9 +134,14 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
   );
 });
 
-// Allow the page to force an update check
+// Allow the page to force an update (user taps "Reload" in the update toast).
+// Workbox's `messageSkipWaiting()` sends {type: "SKIP_WAITING"}.
 self.addEventListener("message", (event) => {
-  if (event.data === "SKIP_WAITING") {
-    void self.skipWaiting();
-  }
+  const data = event.data as unknown;
+  const isSkipWaiting =
+    data === "SKIP_WAITING" ||
+    (typeof data === "object" &&
+      data !== null &&
+      (data as { type?: unknown }).type === "SKIP_WAITING");
+  if (isSkipWaiting) void self.skipWaiting();
 });

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Ban,
@@ -81,6 +81,8 @@ function MiniPriceChart({
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [data, setData] = useState<ListingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -214,13 +216,33 @@ export function ListingDetailPage() {
     }
   }
 
+  /**
+   * Use real history back instead of pushing another /listings entry.
+   * Pushing on every visit makes the iOS back gesture walk a long
+   * detail → list → detail chain, remounting the list each time; history back
+   * keeps the session in one document and avoids that reload path entirely.
+   */
+  function backToListings(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+      return;
+    }
+    e.preventDefault();
+    if (location.key !== "default") {
+      navigate(-1);
+    } else {
+      // Opened directly (deep link / push notification): replace so Back does
+      // not leave the PWA or return to this stale entry.
+      navigate("/listings", { replace: true });
+    }
+  }
+
   if (loading) return <PageLoader />;
 
   if (!listing || !data) {
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" className="-ml-2 rounded-full" asChild>
-          <Link to="/listings">
+          <Link to="/listings" onClick={backToListings}>
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
         </Button>
@@ -258,7 +280,7 @@ export function ListingDetailPage() {
   return (
     <div className="space-y-5">
       <Button variant="ghost" size="sm" className="-ml-2 h-9 rounded-full px-2.5" asChild>
-        <Link to="/listings">
+        <Link to="/listings" onClick={backToListings}>
           <ArrowLeft className="h-4 w-4" />
           Listings
         </Link>

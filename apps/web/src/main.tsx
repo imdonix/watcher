@@ -2,32 +2,40 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { registerSW } from "virtual:pwa-register";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ThemeProvider, useTheme } from "@/hooks/use-theme";
 import { App } from "./App";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./index.css";
 
 /**
- * Auto-update PWA:
- * - poll for new SW often
- * - when a new SW takes control, reload so UI matches the new build
- * (avoids needing a manual cache clear after deploys)
+ * PWA updates are user-confirmed instead of automatic.
+ *
+ * Swapping the service worker + reloading the page while the user is inside
+ * the app is the classic way to end up on a blank white/black screen on iOS
+ * (the reload can race with a back navigation, or the new document can be
+ * served from an inconsistent cache). The SW now keeps the old build alive
+ * until the user taps "Reload", and navigations are network-first, so a new
+ * deploy is picked up without any forced reload.
  */
-let reloading = false;
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloading) return;
-    reloading = true;
-    window.location.reload();
-  });
-}
+let promptedForUpdate = false;
 
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // Activate waiting worker immediately (registerType: autoUpdate)
-    void updateSW(true);
+    if (promptedForUpdate) return;
+    promptedForUpdate = true;
+    toast("Update available", {
+      id: "sw-update",
+      description: "Reload to get the latest version of Watcher.",
+      duration: Number.POSITIVE_INFINITY,
+      closeButton: true,
+      action: {
+        label: "Reload",
+        onClick: () => void updateSW(true),
+      },
+    });
   },
   onRegisteredSW(_swUrl, registration) {
     if (!registration) return;
@@ -36,8 +44,8 @@ const updateSW = registerSW({
       void registration.update();
     };
 
-    // Check every minute + when tab is focused again
-    setInterval(check, 60_000);
+    // Check periodically + whenever the app comes back to the foreground.
+    setInterval(check, 5 * 60_000);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") check();
     });
@@ -68,13 +76,15 @@ function AppToaster() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-          <AppToaster />
-        </AuthProvider>
-      </BrowserRouter>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <BrowserRouter>
+          <AuthProvider>
+            <App />
+            <AppToaster />
+          </AuthProvider>
+        </BrowserRouter>
+      </ThemeProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

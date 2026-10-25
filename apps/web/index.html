@@ -4,13 +4,83 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f4f6fb" />
-    <meta name="description" content="Watcher — deal alerts for jofogas, ingatlan.com and hasznaltauto.hu" />
+    <meta name="description" content="Watcher — deal alerts for jofogas, ingatlan.com, hasznaltauto.hu and hardverapro.hu" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Watcher" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <title>Watcher</title>
+    <script>
+      // Blank-screen recovery for the installed PWA (mostly iOS): a stale
+      // cached document can point at JS chunks from an older deploy, so the
+      // app never mounts and the screen stays blank (white or black).
+      // Drop the service worker + caches once per session, then reload.
+      (function () {
+        var KEY = "watcher_asset_recovery";
+        var started = false;
+
+        function recover() {
+          if (started) return;
+          started = true;
+          try {
+            if (sessionStorage.getItem(KEY)) return;
+            sessionStorage.setItem(KEY, "1");
+          } catch (err) {
+            return; // no storage → cannot guard against reload loops
+          }
+
+          var reload = function () {
+            location.reload();
+          };
+          var clearCaches = function () {
+            if (!window.caches) return Promise.resolve();
+            return caches.keys().then(function (keys) {
+              return Promise.all(
+                keys.map(function (key) {
+                  return caches.delete(key);
+                }),
+              );
+            });
+          };
+          var unregister = function () {
+            if (!navigator.serviceWorker) return Promise.resolve();
+            return navigator.serviceWorker.getRegistrations().then(function (regs) {
+              return Promise.all(
+                regs.map(function (reg) {
+                  return reg.unregister();
+                }),
+              );
+            });
+          };
+
+          Promise.resolve().then(unregister).then(clearCaches).then(reload, reload);
+        }
+
+        // A chunk that fails to load (404 after a deploy) fires `error` on the
+        // <script> element. The entry bundle lives under /assets/ in prod.
+        window.addEventListener(
+          "error",
+          function (event) {
+            var el = event.target;
+            if (el && el.tagName === "SCRIPT") {
+              var src = el.src || "";
+              if (src.indexOf("/assets/") !== -1) recover();
+            }
+          },
+          true,
+        );
+
+        // Fallback when nothing rendered and we cannot know why. Only runs when
+        // a service worker is controlling the page (i.e. installed PWA), so it
+        // never interferes with `vite dev`.
+        setTimeout(function () {
+          if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+          var root = document.getElementById("root");
+          if (!root || root.childNodes.length === 0) recover();
+        }, 12000);
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

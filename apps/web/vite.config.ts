@@ -12,13 +12,15 @@ export default defineConfig({
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.ts",
-      registerType: "autoUpdate",
+      // Updates are applied from the in-app toast (see main.tsx). Auto-updating
+      // mid-session forces reloads that can blank the PWA on iOS.
+      registerType: "prompt",
       injectRegister: false,
       includeAssets: ["icons/*.svg", "icons/*.png", "favicon.svg"],
       manifest: {
         name: "Watcher",
         short_name: "Watcher",
-        description: "Deal watcher for jofogas, ingatlan.com and hasznaltauto.hu",
+        description: "Deal watcher for jofogas, ingatlan.com, hasznaltauto.hu and hardverapro.hu",
         theme_color: "#3b5bdb",
         background_color: "#f8fafc",
         display: "standalone",
