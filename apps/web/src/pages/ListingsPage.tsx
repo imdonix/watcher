@@ -6,6 +6,7 @@ import {
   ExternalLink,
   EyeOff,
   Image as ImageIcon,
+  Inbox,
   LayoutList,
   MoreHorizontal,
   RefreshCw,
@@ -21,6 +22,7 @@ import { formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { aiScoreVariant } from "@/lib/ai";
 import { formatEngine, formatRelative } from "@/lib/format";
+import { publishNewCount, readLastSeenAt, writeLastSeenAt } from "@/lib/inbox";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -38,16 +40,15 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { ListingSkeleton } from "@/components/Skeleton";
 
-const NEW_WINDOW_MS = 24 * 60 * 60 * 1000;
-
 function priceLabel(item: ItemView): string {
   if (typeof item.priceFormatted === "string") return item.priceFormatted;
   return formatPrice(item.price as number | string | null);
 }
 
-function isNew(item: ItemView): boolean {
+function isNewSince(item: ItemView, since: number | null): boolean {
+  if (since == null) return false;
   const t = new Date(String(item.firstSeenAt)).getTime();
-  return Number.isFinite(t) && Date.now() - t < NEW_WINDOW_MS;
+  return Number.isFinite(t) && t > since;
 }
 
 export function ListingsPage() {
@@ -55,6 +56,8 @@ export function ListingsPage() {
   const [items, setItems] = useState<ItemView[]>([]);
   const [query, setQuery] = useState("");
   const [showHidden, setShowHidden] = useState(false);
+  const [onlyNew, setOnlyNew] = useState(false);
+  const [lastSeenAt, setLastSeenAt] = useState<number | null>(readLastSeenAt);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -85,6 +88,14 @@ export function ListingsPage() {
     void load();
   }, [load]);
 
+  // First visit after installing the feature: start counting from now.
+  useEffect(() => {
+    if (lastSeenAt != null) return;
+    const now = Date.now();
+    writeLastSeenAt(now);
+    setLastSeenAt(now);
+  }, [lastSeenAt]);
+
   useEffect(
     () => () => {
       for (const t of flipTimers.current.values()) window.clearTimeout(t);
@@ -101,22 +112,49 @@ export function ListingsPage() {
   const hidden = useMemo(() => items.filter((i) => i.notInterested), [items]);
   const source = showHidden ? hidden : active;
 
+  const newCount = useMemo(
+    () => active.filter((item) => isNewSince(item, lastSeenAt)).length,
+    [active, lastSeenAt],
+  );
+
+  const rows =
+    onlyNew && !showHidden
+      ? source.filter((item) => isNewSince(item, lastSeenAt))
+      : source;
+
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const rows = q
-      ? source.filter(
+    const matching = q
+      ? rows.filter(
           (i) =>
             String(i.name).toLowerCase().includes(q) ||
             String(i.engineSlug ?? "").toLowerCase().includes(q),
         )
-      : source;
-    return [...rows].sort(
+      : rows;
+    return [...matching].sort(
       (a, b) =>
         new Date(String(b.firstSeenAt)).getTime() - new Date(String(a.firstSeenAt)).getTime(),
     );
-  }, [source, query]);
+  }, [rows, query]);
 
-  const newCount = useMemo(() => active.filter(isNew).length, [active]);
+  // Keep the navigation badge in sync with the inbox.
+  useEffect(() => {
+    publishNewCount(newCount);
+  }, [newCount]);
+
+  // Nothing left unread → leave the "new only" filter automatically.
+  useEffect(() => {
+    if (onlyNew && newCount === 0) setOnlyNew(false);
+  }, [onlyNew, newCount]);
+
+  function markAllSeen() {
+    const now = Date.now();
+    writeLastSeenAt(now);
+    setLastSeenAt(now);
+    setOnlyNew(false);
+    publishNewCount(0);
+    toast.success("Marked all as seen");
+  }
 
   function openDetails(id: string) {
     navigate(`/listings/${encodeURIComponent(id)}`);
@@ -226,6 +264,7 @@ export function ListingsPage() {
   function switchView(hiddenView: boolean) {
     setShowHidden(hiddenView);
     setQuery("");
+    setOnlyNew(false);
   }
 
   if (loading) {
@@ -288,7 +327,7 @@ export function ListingsPage() {
           showHidden
             ? "Hidden listings — restore anything the AI got wrong."
             : `${active.length} potential product${active.length === 1 ? "" : "s"}, newest first${
-                newCount > 0 ? ` · ${newCount} new in the last 24h` : ""
+                newCount > 0 ? ` · ${newCount} new since your last visit` : ""
               }. AI rejects are hidden automatically.`
         }
         actions={
@@ -317,6 +356,39 @@ export function ListingsPage() {
           </div>
         }
       />
+
+      {!showHidden && newCount > 0 && (
+        <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/[0.04] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
+              <Inbox className="size-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {newCount} new potential product{newCount === 1 ? "" : "s"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Since your last check
+                {lastSeenAt != null
+                  ? ` · ${formatRelative(new Date(lastSeenAt).toISOString())}`
+                  : ""}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant={onlyNew ? "secondary" : "outline"}
+              onClick={() => setOnlyNew((v) => !v)}
+            >
+              {onlyNew ? "Show all" : "Show new only"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={markAllSeen}>
+              Mark all seen
+            </Button>
+          </div>
+        </div>
+      )}
 
       {source.length > 0 && (
         <div className="relative max-w-md">
@@ -350,7 +422,7 @@ export function ListingsPage() {
             {visible.map((item) => {
               const leaving = exiting.has(item.id);
               const imgBroken = brokenImages.has(item.id);
-              const fresh = !showHidden && isNew(item);
+              const fresh = !showHidden && isNewSince(item, lastSeenAt);
               const dropped =
                 typeof item.prevPrice === "number" &&
                 typeof item.price === "number" &&

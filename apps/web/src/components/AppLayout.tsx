@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { scrapePercent, scrapePhaseLine, scrapePhaseSub } from "@/lib/scrape";
+import { readNewCount, subscribeNewCount } from "@/lib/inbox";
 import { PUSH_STATE_EVENT } from "@/lib/push-events";
 
 const primaryNav = [
@@ -90,12 +91,14 @@ function SidebarLink({
   label,
   icon: Icon,
   active,
+  badge = 0,
   onClick,
 }: {
   to: string;
   label: string;
   icon: typeof LayoutList;
   active: boolean;
+  badge?: number;
   onClick?: () => void;
 }) {
   return (
@@ -111,7 +114,13 @@ function SidebarLink({
     >
       <Icon className={cn("size-4 shrink-0", active && "text-primary")} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {active && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
+      {badge > 0 ? (
+        <span className="ml-auto inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : (
+        active && <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+      )}
     </NavLink>
   );
 }
@@ -243,6 +252,9 @@ export function AppLayout() {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushOn, setPushOn] = useState(false);
   const [scraperUp, setScraperUp] = useState<boolean | null>(null);
+  const [inboxCount, setInboxCount] = useState(readNewCount);
+
+  useEffect(() => subscribeNewCount(setInboxCount), []);
 
   const pushSupported = isPushSupported();
 
@@ -374,6 +386,7 @@ export function AppLayout() {
                 to={to}
                 label={label}
                 icon={icon}
+                badge={to === "/listings" ? inboxCount : 0}
                 active={match.test(activePath)}
               />
             ))}
@@ -513,6 +526,7 @@ export function AppLayout() {
                         to={to}
                         label={label}
                         icon={icon}
+                        badge={to === "/listings" ? inboxCount : 0}
                         active={match.test(activePath)}
                         onClick={() => setMenuOpen(false)}
                       />
@@ -604,7 +618,14 @@ export function AppLayout() {
                 {active && (
                   <span className="absolute top-0 h-0.5 w-7 rounded-full bg-primary" aria-hidden />
                 )}
-                <Icon className={cn("size-[1.15rem]", active && "stroke-[2.4px]")} />
+                <span className="relative">
+                  <Icon className={cn("size-[1.15rem]", active && "stroke-[2.4px]")} />
+                  {to === "/listings" && inboxCount > 0 && (
+                    <span className="absolute -right-2.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-4 text-primary-foreground">
+                      {inboxCount > 9 ? "9+" : inboxCount}
+                    </span>
+                  )}
+                </span>
                 {label}
               </NavLink>
             );
