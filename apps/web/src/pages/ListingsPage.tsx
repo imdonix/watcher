@@ -286,17 +286,17 @@ export function ListingsPage() {
         title={showHidden ? "Hidden listings" : "Listings"}
         description={
           showHidden
-            ? `${hidden.length} hidden listing${hidden.length === 1 ? "" : "s"} · restore anything the AI got wrong.`
+            ? "Hidden listings — restore anything the AI got wrong."
             : `${active.length} potential product${active.length === 1 ? "" : "s"}, newest first${
                 newCount > 0 ? ` · ${newCount} new in the last 24h` : ""
               }. AI rejects are hidden automatically.`
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {!showHidden && hidden.length > 0 && (
+            {!showHidden && (
               <Button variant="ghost" size="sm" onClick={() => switchView(true)}>
                 <EyeOff />
-                Hidden ({hidden.length})
+                Hidden
               </Button>
             )}
             {showHidden && (

@@ -467,7 +467,7 @@ export function ListingDetailPage() {
                 <div className="flex flex-wrap gap-1.5">
                   {listing.notInterested ? (
                     <Badge variant="secondary" className="shadow-sm">
-                      Hidden
+                      {listing.notInterestedReason === "ai" ? "Hidden by AI" : "Hidden"}
                     </Badge>
                   ) : listing.status === "missing" ? (
                     <Badge variant="warning" className="shadow-sm">
@@ -570,7 +570,11 @@ export function ListingDetailPage() {
                       </Badge>
                     )}
                     {!listing.detailsScrapedAt && <Badge variant="secondary">Details pending</Badge>}
-                    {listing.notInterested && <Badge variant="secondary">Not interested</Badge>}
+                    {listing.notInterested && (
+                      <Badge variant="secondary">
+                        {listing.notInterestedReason === "ai" ? "Hidden by AI" : "Not interested"}
+                      </Badge>
+                    )}
                     {listing.status === "missing" && <Badge variant="warning">Gone from search</Badge>}
                   </div>
                 </div>
