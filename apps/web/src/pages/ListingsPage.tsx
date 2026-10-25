@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
+  ArrowDownWideNarrow,
   ArrowLeft,
   Ban,
   ExternalLink,
@@ -14,6 +15,7 @@ import {
   Search,
   Sparkles,
   TrendingDown,
+  TrendingUp,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -51,12 +53,28 @@ function isNewSince(item: ItemView, since: number | null): boolean {
   return Number.isFinite(t) && t > since;
 }
 
+/** Lower is a better deal. Items without a signal sort last. */
+function dealRank(item: ItemView): number {
+  const deal = item.deal;
+  if (!deal) return Number.POSITIVE_INFINITY;
+  if (deal.market) {
+    return deal.market.deltaPct + (deal.allTimeLow ? -15 : 0);
+  }
+  if (deal.allTimeLow) return -15;
+  return Number.POSITIVE_INFINITY;
+}
+
+function hasDealSignal(item: ItemView): boolean {
+  return Boolean(item.deal && (item.deal.market || item.deal.allTimeLow));
+}
+
 export function ListingsPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ItemView[]>([]);
   const [query, setQuery] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const [onlyNew, setOnlyNew] = useState(false);
+  const [bestDeals, setBestDeals] = useState(false);
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(readLastSeenAt);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -131,11 +149,20 @@ export function ListingsPage() {
             String(i.engineSlug ?? "").toLowerCase().includes(q),
         )
       : rows;
-    return [...matching].sort(
-      (a, b) =>
-        new Date(String(b.firstSeenAt)).getTime() - new Date(String(a.firstSeenAt)).getTime(),
-    );
-  }, [rows, query]);
+    return [...matching].sort((a, b) => {
+      if (bestDeals) {
+        const rankA = dealRank(a);
+        const rankB = dealRank(b);
+        if (rankA !== rankB) return rankA - rankB;
+      }
+      return (
+        new Date(String(b.firstSeenAt)).getTime() -
+        new Date(String(a.firstSeenAt)).getTime()
+      );
+    });
+  }, [rows, query, bestDeals]);
+
+  const dealSignals = useMemo(() => active.filter(hasDealSignal).length, [active]);
 
   // Keep the navigation badge in sync with the inbox.
   useEffect(() => {
@@ -265,6 +292,7 @@ export function ListingsPage() {
     setShowHidden(hiddenView);
     setQuery("");
     setOnlyNew(false);
+    if (hiddenView) setBestDeals(false);
   }
 
   if (loading) {
@@ -336,6 +364,17 @@ export function ListingsPage() {
               <Button variant="ghost" size="sm" onClick={() => switchView(true)}>
                 <EyeOff />
                 Hidden
+              </Button>
+            )}
+            {!showHidden && dealSignals > 0 && (
+              <Button
+                variant={bestDeals ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setBestDeals((v) => !v)}
+                aria-pressed={bestDeals}
+              >
+                <ArrowDownWideNarrow />
+                Best deals
               </Button>
             )}
             {showHidden && (
@@ -429,6 +468,13 @@ export function ListingsPage() {
                 item.prevPrice > item.price
                   ? item.prevPrice - item.price
                   : null;
+              const market = item.deal?.market;
+              const showMarket = Boolean(
+                market &&
+                  (market.confidence === "model"
+                    ? Math.abs(market.deltaPct) >= 5
+                    : market.deltaPct <= -10),
+              );
               const detailLink = `/listings/${encodeURIComponent(item.id)}`;
 
               return (
@@ -490,9 +536,43 @@ export function ListingsPage() {
                           {item.notInterestedReason === "ai" ? "Hidden by AI" : "Hidden"}
                         </Badge>
                       )}
-                      {dropped != null && (
+                      {item.deal?.allTimeLow ? (
+                        <Badge
+                          variant="success"
+                          title={
+                            item.deal.lowestPrice != null
+                              ? `Lowest observed price: ${formatPrice(item.deal.lowestPrice)}`
+                              : "Lowest price observed"
+                          }
+                        >
+                          <TrendingDown className="size-3" />
+                          All-time low
+                        </Badge>
+                      ) : dropped != null ? (
                         <Badge variant="success">
                           <TrendingDown className="size-3" />-{formatPrice(dropped)}
+                        </Badge>
+                      ) : null}
+                      {market && showMarket && (
+                        <Badge
+                          variant={
+                            market.deltaPct <= -10
+                              ? "success"
+                              : market.deltaPct >= 10
+                                ? "warning"
+                                : "secondary"
+                          }
+                          title={`Median ${formatPrice(market.medianPrice)} · ${market.sampleSize} ${
+                            market.confidence === "model" ? "same-model" : "similar"
+                          } listing${market.sampleSize === 1 ? "" : "s"}`}
+                        >
+                          {market.deltaPct > 0 ? (
+                            <TrendingUp className="size-3" />
+                          ) : (
+                            <TrendingDown className="size-3" />
+                          )}
+                          {market.deltaPct > 0 ? "+" : ""}
+                          {market.deltaPct}% vs market
                         </Badge>
                       )}
                       {typeof item.aiScore === "number" ? (
@@ -519,11 +599,6 @@ export function ListingsPage() {
                         <Badge variant="outline" className="font-mono text-[10px]">
                           {formatEngine(item.engineSlug)}
                         </Badge>
-                      )}
-                      {(item.sightingCount ?? 0) > 1 && (
-                        <span className="text-[11px] tabular-nums text-muted-foreground">
-                          seen {item.sightingCount}×
-                        </span>
                       )}
                     </div>
 

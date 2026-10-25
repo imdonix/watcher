@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Info,
   PackageSearch,
+  Scale,
   Sparkles,
   TrendingDown,
   TrendingUp,
@@ -589,19 +590,34 @@ export function ListingDetailPage() {
                       </span>
                     )}
                   </div>
-                  {priceDropped && (
-                    <Badge
-                      variant="success"
-                      className="mt-1.5"
-                      title={
-                        listing.priceChangedAt
-                          ? `Dropped ${formatRelative(listing.priceChangedAt)}`
-                          : "Price dropped"
-                      }
-                    >
-                      <TrendingDown className="size-3" />
-                      {formatPrice(prevPrice - curPrice)}
-                    </Badge>
+                  {(priceDropped || listing.deal?.allTimeLow) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 sm:justify-end">
+                      {priceDropped && (
+                        <Badge
+                          variant="success"
+                          title={
+                            listing.priceChangedAt
+                              ? `Dropped ${formatRelative(listing.priceChangedAt)}`
+                              : "Price dropped"
+                          }
+                        >
+                          <TrendingDown className="size-3" />
+                          {formatPrice(prevPrice - curPrice)}
+                        </Badge>
+                      )}
+                      {listing.deal?.allTimeLow && (
+                        <Badge
+                          variant="info"
+                          title={
+                            listing.deal.lowestPrice != null
+                              ? `Lowest observed: ${formatPrice(listing.deal.lowestPrice)}`
+                              : "Lowest observed price"
+                          }
+                        >
+                          All-time low
+                        </Badge>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -954,6 +970,101 @@ export function ListingDetailPage() {
 
         {/* Side rail */}
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-6 lg:self-start">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Scale className="size-4 text-muted-foreground" />
+                Market check
+              </CardTitle>
+              <CardDescription>
+                How this price compares with similar listings on{" "}
+                {formatEngine(listing.engineSlug) || "the same site"}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {listing.deal?.market ? (
+                <>
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="text-sm text-muted-foreground">Similar median</span>
+                    <span className="text-lg font-semibold tabular-nums">
+                      {formatPrice(listing.deal.market.medianPrice)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="text-muted-foreground">This listing</span>
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium tabular-nums">
+                        {listing.priceFormatted ?? formatPrice(listing.price)}
+                      </span>
+                      <Badge
+                        variant={
+                          listing.deal.market.deltaPct <= -10
+                            ? "success"
+                            : listing.deal.market.deltaPct >= 10
+                              ? "warning"
+                              : "secondary"
+                        }
+                      >
+                        {listing.deal.market.deltaPct > 0 ? "+" : ""}
+                        {listing.deal.market.deltaPct}%{" "}
+                        {listing.deal.market.deltaPct < 0
+                          ? "below"
+                          : listing.deal.market.deltaPct > 0
+                            ? "above"
+                            : "at"}{" "}
+                        median
+                      </Badge>
+                    </span>
+                  </div>
+                  <p
+                    className="text-[11px] leading-relaxed text-muted-foreground"
+                    title={
+                      listing.deal.market.matchedTokens.length > 0
+                        ? `Matched: ${listing.deal.market.matchedTokens.join(", ")}`
+                        : undefined
+                    }
+                  >
+                    Based on {listing.deal.market.sampleSize}{" "}
+                    {listing.deal.market.confidence === "model"
+                      ? "same-model"
+                      : "similar"}{" "}
+                    listing
+                    {listing.deal.market.sampleSize === 1 ? "" : "s"}
+                    {listing.deal.market.confidence === "similar" ? " (broad match)" : ""}.
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Not enough comparable listings yet. It will appear once more similar
+                  listings are tracked.
+                </p>
+              )}
+
+              <div className="space-y-1.5 border-t pt-3 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Lowest observed</span>
+                  <span className="font-medium tabular-nums">
+                    {listing.deal?.lowestPrice != null
+                      ? formatPrice(listing.deal.lowestPrice)
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Observations</span>
+                  <span className="font-medium tabular-nums">
+                    {listing.deal?.observations ?? data.sightings.length}
+                  </span>
+                </div>
+                {listing.deal?.allTimeLow && (
+                  <Badge variant="success" className="mt-1">
+                    <TrendingDown className="size-3" />
+                    At its all-time low
+                  </Badge>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">

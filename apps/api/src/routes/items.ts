@@ -1,12 +1,17 @@
 import { Hono } from "hono";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { listingEvents, listingSightings, listings, type Database } from "@watcher/db";
-import { formatPrice } from "@watcher/shared";
+import { formatPrice, type ListingDeal } from "@watcher/shared";
 import { requireAuth, type AuthEnv } from "../middleware/auth";
 import { aiConfigured, evaluateListing, loadAiConfig } from "../services/ai";
+import { computeDeals, loadSightingStats } from "../services/deals";
 import { log, logError } from "../lib/time";
 
-function mapListing(row: typeof listings.$inferSelect, sightingCount = 0) {
+function mapListing(
+  row: typeof listings.$inferSelect,
+  sightingCount = 0,
+  deal: ListingDeal | null = null,
+) {
   const available = row.status === "active" && !row.notInterested;
   return {
     id: row.id,
@@ -35,6 +40,7 @@ function mapListing(row: typeof listings.$inferSelect, sightingCount = 0) {
     prevPrice: row.prevPrice ?? null,
     priceChangedAt: row.priceChangedAt ?? null,
     targetPrice: row.targetPrice ?? null,
+    deal,
   };
 }
 
@@ -62,17 +68,18 @@ export function itemRoutes(db: Database) {
 
     rows = rows.slice(0, limit);
 
-    const counts = await db
-      .select({
-        listingId: listingSightings.listingId,
-        n: sql<number>`count(*)::int`,
-      })
-      .from(listingSightings)
-      .groupBy(listingSightings.listingId);
+    const stats = await loadSightingStats(db);
+    const deals = await computeDeals(db, rows, stats);
 
-    const countMap = new Map(counts.map((c) => [c.listingId, c.n]));
-
-    return c.json(rows.map((row) => mapListing(row, countMap.get(row.id) ?? 0)));
+    return c.json(
+      rows.map((row) =>
+        mapListing(
+          row,
+          stats.get(row.id)?.count ?? 0,
+          deals.get(row.id) ?? null,
+        ),
+      ),
+    );
   });
 
   app.get("/:id", async (c) => {
@@ -104,8 +111,23 @@ export function itemRoutes(db: Database) {
         scrapeRunId: s.scrapeRunId,
       }));
 
+    const prices = sightings
+      .map((s) => s.price)
+      .filter((p): p is number => p != null);
+    const stats = new Map([
+      [
+        id,
+        {
+          count: sightings.length,
+          lowest: prices.length > 0 ? Math.min(...prices) : null,
+          highest: prices.length > 0 ? Math.max(...prices) : null,
+        },
+      ],
+    ]);
+    const deals = await computeDeals(db, [row], stats);
+
     return c.json({
-      listing: mapListing(row, sightings.length),
+      listing: mapListing(row, sightings.length, deals.get(id) ?? null),
       sightings,
       events,
       priceHistory,

@@ -91,6 +91,27 @@ export const AI_EVALUATION_JOB_SLUG = "__ai_evaluate__";
 
 export type ListingStatus = "active" | "missing";
 
+/** Price context compared with similar listings. */
+export interface DealMarket {
+  medianPrice: number;
+  sampleSize: number;
+  /** Negative = cheaper than the median. */
+  deltaPct: number;
+  /** "model" = exact model token match; "similar" = broader product match. */
+  confidence: "model" | "similar";
+  /** Normalized tokens shared by the comparable listings. */
+  matchedTokens: string[];
+}
+
+export interface ListingDeal {
+  market: DealMarket | null;
+  /** Current price is the lowest ever observed (with at least one higher price). */
+  allTimeLow: boolean;
+  lowestPrice: number | null;
+  highestPrice: number | null;
+  observations: number;
+}
+
 export interface ItemView {
   id: string;
   name: string;
@@ -124,6 +145,8 @@ export interface ItemView {
   priceChangedAt?: string | null;
   /** Alert threshold set by the user (null = none) */
   targetPrice?: number | null;
+  /** Market comparison + all-time low context */
+  deal?: ListingDeal | null;
   [key: string]: unknown;
 }
 
