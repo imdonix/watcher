@@ -1,22 +1,21 @@
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function Spinner({ className }: { className?: string }) {
   return (
-    <div
+    <Loader2
       role="status"
       aria-label="Loading"
-      className={cn(
-        "h-7 w-7 animate-spin rounded-full border-2 border-primary/25 border-t-primary",
-        className,
-      )}
+      className={cn("size-6 animate-spin text-muted-foreground", className)}
     />
   );
 }
 
-export function PageLoader() {
+export function PageLoader({ label }: { label?: string }) {
   return (
-    <div className="flex justify-center py-20">
-      <Spinner />
+    <div className="flex min-h-64 flex-col items-center justify-center gap-3 py-20">
+      <Spinner className="size-7 text-primary" />
+      {label && <p className="text-sm text-muted-foreground">{label}</p>}
     </div>
   );
 }

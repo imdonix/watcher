@@ -1,17 +1,23 @@
 import { type FormEvent, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Eye, EyeOff, KeyRound, Moon, Radar, Sun } from "lucide-react";
+import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
-import { useTheme } from "@/hooks/use-theme";
+import { Brand } from "@/components/Brand";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export function LoginPage() {
   const { authenticated, loading, login } = useAuth();
-  const { theme, toggle: toggleTheme } = useTheme();
   const [token, setTokenValue] = useState("");
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -32,67 +38,69 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center p-4">
-      <div className="absolute right-3 top-3 sm:right-4 sm:top-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 rounded-full"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
+    <div className="app-backdrop relative flex min-h-dvh flex-col items-center justify-center p-4">
+      <div className="absolute right-3 top-3 sm:right-4 sm:top-4" style={{ top: "max(0.75rem, env(safe-area-inset-top))" }}>
+        <ThemeToggle />
       </div>
-      <Card className="w-full max-w-sm border-border/80 shadow-card-hover">
-        <CardHeader className="space-y-4 pb-2 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
-            <Radar className="h-7 w-7" />
-          </div>
-          <div>
-            <CardTitle className="text-2xl tracking-tight">Watcher</CardTitle>
-            <p className="mt-1 text-sm text-muted-foreground">Sign in with your API token</p>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-2">
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="token">API token</Label>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="token"
-                  type={show ? "text" : "password"}
-                  value={token}
-                  onChange={(e) => setTokenValue(e.target.value)}
-                  required
-                  autoComplete="current-password"
-                  spellCheck={false}
-                  autoFocus
-                  className="h-12 rounded-xl pl-9 pr-11 font-mono text-sm"
-                  placeholder="paste token…"
-                />
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-                  onClick={() => setShow((s) => !s)}
-                  tabIndex={-1}
-                  aria-label={show ? "Hide token" : "Show token"}
-                >
-                  {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+
+      <div className="w-full max-w-sm space-y-6">
+        <div className="flex justify-center">
+          <Brand tagline />
+        </div>
+
+        <Card className="shadow-card-hover">
+          <CardHeader className="space-y-1.5">
+            <CardTitle className="text-xl tracking-tight">Sign in</CardTitle>
+            <CardDescription>
+              Enter the API token from the Watcher API logs to open your dashboard.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={onSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="token">API token</Label>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="token"
+                    type={show ? "text" : "password"}
+                    value={token}
+                    onChange={(e) => setTokenValue(e.target.value)}
+                    required
+                    autoComplete="current-password"
+                    spellCheck={false}
+                    autoFocus
+                    className="h-11 pl-8 pr-10 font-mono text-sm"
+                    placeholder="Paste your token…"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    onClick={() => setShow((s) => !s)}
+                    tabIndex={-1}
+                    aria-label={show ? "Hide token" : "Show token"}
+                  >
+                    {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
-            <Button
-              type="submit"
-              className="h-12 w-full rounded-xl text-base"
-              disabled={busy || !token.trim()}
-            >
-              {busy ? "Checking…" : "Continue"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                disabled={busy || !token.trim()}
+              >
+                {busy ? "Checking…" : "Continue"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-muted-foreground">
+          <ShieldCheck className="size-3.5" />
+          The token is stored only in this browser.
+        </p>
+      </div>
     </div>
   );
 }

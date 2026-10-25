@@ -3,16 +3,18 @@ import {
   Activity,
   BellOff,
   BellRing,
+  ChevronRight,
   LayoutList,
   LogOut,
+  Menu,
   Moon,
-  MoreHorizontal,
   RefreshCw,
   Settings,
   Settings2,
   Sun,
+  UserRound,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import type { ScrapeProgress } from "@watcher/shared";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,7 +27,22 @@ import {
   getNotificationPermission,
   isPushSupported,
 } from "@/lib/push";
+import { cn } from "@/lib/utils";
+import { Brand } from "@/components/Brand";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,58 +51,187 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { scrapePercent, scrapePhaseLine, scrapePhaseSub } from "@/lib/scrape";
+import { PUSH_STATE_EVENT } from "@/lib/push-events";
 
-const nav = [
-  { to: "/listings", label: "Listings", icon: LayoutList, match: /^\/listings/ },
-  { to: "/routines", label: "Routines", icon: Settings2, match: /^\/routines/ },
-  { to: "/status", label: "Status", icon: Activity, match: /^\/status/ },
+const primaryNav = [
+  {
+    to: "/listings",
+    label: "Listings",
+    icon: LayoutList,
+    match: /^\/listings/
+  },
+  {
+    to: "/routines",
+    label: "Routines",
+    icon: Settings2,
+    match: /^\/routines/
+  },
+  {
+    to: "/status",
+    label: "Status",
+    icon: Activity,
+    match: /^\/status/
+  },
 ] as const;
 
-/** Short line 1 for the in-progress chip (counters where available). */
-function scrapePhaseLine(p: ScrapeProgress | null): string {
-  if (!p) return "Starting…";
-  switch (p.phase) {
-    case "routine":
-      return p.routineIndex != null && p.routinesTotal != null
-        ? `Routine ${p.routineIndex}/${p.routinesTotal}`
-        : "Scraping listings";
-    case "details":
-      return p.detailsTotal != null && p.detailsTotal > 0
-        ? `Details ${p.detailsIndex ?? 0}/${p.detailsTotal}`
-        : "Item details…";
-    case "ai":
-      return p.detailsTotal != null && p.detailsTotal > 0
-        ? `AI ${p.detailsIndex ?? 0}/${p.detailsTotal}`
-        : "AI evaluation…";
-    case "finishing":
-      return "Finishing up";
-    case "notify":
-      return "Sending notifications";
-    case "starting":
-      return "Starting…";
-    default:
-      return "Scraping…";
-  }
+const settingsNav = {
+  to: "/settings",
+  label: "Settings",
+  icon: Settings,
+  match: /^\/settings/
+} as const;
+
+const mobileNav = [...primaryNav, settingsNav];
+
+function SidebarLink({
+  to,
+  label,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  to: string;
+  label: string;
+  icon: typeof LayoutList;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <NavLink
+      to={to}
+      onClick={onClick}
+      className={cn(
+        "group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+        active
+          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-xs"
+          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+      )}
+    >
+      <Icon className={cn("size-4 shrink-0", active && "text-primary")} />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {active && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
+    </NavLink>
+  );
 }
 
-/** Line 2 for the chip — context without repeating line 1. */
-function scrapePhaseSub(p: ScrapeProgress | null): string {
-  if (!p) return "Scrape requested";
-  if (p.phase === "routine") return p.engineName ?? p.message;
-  if (p.phase === "details" || p.phase === "ai") {
-    return p.routineLabel ?? p.message;
+function ScrapeProgressCard({
+  active,
+  progress,
+  pending,
+  onOpenStatus,
+  onScrape,
+  className,
+}: {
+  active: boolean;
+  progress: ScrapeProgress | null;
+  pending: boolean;
+  onOpenStatus: () => void;
+  onScrape: () => void;
+  className?: string;
+}) {
+  const percent = scrapePercent(progress);
+
+  if (!active) {
+    return (
+      <Button className={cn("w-full", className)} onClick={onScrape} disabled={pending}>
+        <RefreshCw />
+        Run scrape
+      </Button>
+    );
   }
-  return p.message;
+
+  return (
+    <div className={cn("rounded-lg border border-amber-500/30 bg-amber-500/8 p-3", className)}>
+      <div className="flex items-center gap-2">
+        <RefreshCw className="size-3.5 shrink-0 animate-spin text-amber-600 dark:text-amber-400" />
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+          {scrapePhaseLine(progress)}
+        </span>
+        <span className="text-[10px] font-medium uppercase tracking-wide text-amber-700/80 dark:text-amber-300/80">
+          live
+        </span>
+      </div>
+      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+        {scrapePhaseSub(progress)}
+      </p>
+      {percent != null && <Progress value={percent} className="mt-2 h-1 bg-amber-500/20 [&>div]:bg-amber-500" />}
+      <button
+        type="button"
+        onClick={onOpenStatus}
+        className="mt-2 inline-flex items-center gap-0.5 text-[11px] font-medium text-amber-800 hover:underline dark:text-amber-300"
+      >
+        Open status
+        <ChevronRight className="size-3" />
+      </button>
+    </div>
+  );
+}
+
+function PushSwitch({
+  supported,
+  pushOn,
+  busy,
+  onChange,
+}: {
+  supported: boolean;
+  pushOn: boolean;
+  busy: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+          {pushOn ? <BellRing className="size-4" /> : <BellOff className="size-4" />}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium leading-none">Push notifications</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {supported ? (pushOn ? "On for this device" : "Off for this device") : "Not supported"}
+          </p>
+        </div>
+      </div>
+      <Switch
+        checked={pushOn}
+        disabled={!supported || busy}
+        onCheckedChange={() => onChange()}
+        aria-label="Toggle push notifications"
+      />
+    </div>
+  );
+}
+
+function ThemeSwitch() {
+  const { theme, toggle } = useTheme();
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+          {theme === "dark" ? <Moon className="size-4" /> : <Sun className="size-4" />}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium leading-none">Dark mode</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {theme === "dark" ? "Dark theme active" : "Light theme active"}
+          </p>
+        </div>
+      </div>
+      <Switch
+        checked={theme === "dark"}
+        onCheckedChange={() => toggle()}
+        aria-label="Toggle dark mode"
+      />
+    </div>
+  );
 }
 
 export function AppLayout() {
   const { logout } = useAuth();
-  const { theme, toggle: toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
-  const isDetail = /^\/listings\/.+/.test(location.pathname);
-  const onSettings = location.pathname.startsWith("/settings");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [scrapeRequest, setScrapeRequest] = useState(false);
   const [scrapeState, setScrapeState] = useState<{
@@ -93,22 +239,40 @@ export function AppLayout() {
     progress: ScrapeProgress | null;
   }>({ inProgress: false, progress: null });
   const scrapeActive = scrapeRequest || scrapeState.inProgress;
+
   const [pushBusy, setPushBusy] = useState(false);
   const [pushOn, setPushOn] = useState(false);
   const [scraperUp, setScraperUp] = useState<boolean | null>(null);
+
+  const pushSupported = isPushSupported();
 
   useEffect(() => {
     api
       .health()
       .then((h) => setScraperUp(h.scraper))
       .catch(() => setScraperUp(null));
-    void (async () => {
-      if (!isPushSupported()) return;
-      const perm = await getNotificationPermission();
-      const sub = await getExistingSubscription();
-      setPushOn(perm === "granted" && Boolean(sub));
-    })();
+    const t = setInterval(() => {
+      api
+        .health()
+        .then((h) => setScraperUp(h.scraper))
+        .catch(() => setScraperUp(null));
+    }, 60_000);
+    return () => clearInterval(t);
   }, []);
+
+  useEffect(() => {
+    if (!pushSupported) return;
+    const sync = () => {
+      void (async () => {
+        const perm = await getNotificationPermission();
+        const sub = await getExistingSubscription();
+        setPushOn(perm === "granted" && Boolean(sub));
+      })();
+    };
+    sync();
+    window.addEventListener(PUSH_STATE_EVENT, sync);
+    return () => window.removeEventListener(PUSH_STATE_EVENT, sync);
+  }, [pushSupported]);
 
   // Poll scrape state — fast while running (live counters), slow when idle.
   useEffect(() => {
@@ -129,6 +293,11 @@ export function AppLayout() {
     };
   }, [scrapeActive]);
 
+  const openStatus = () => {
+    setMenuOpen(false);
+    navigate("/status");
+  };
+
   async function doScrap() {
     setScrapeRequest(true);
     try {
@@ -137,7 +306,7 @@ export function AppLayout() {
         toast.message("Scrape already running");
         setScrapeState((s) => ({ ...s, inProgress: true }));
       } else if (res.started) {
-        toast.success("Scrape started — progress shows here");
+        toast.success("Scrape started");
         setScrapeState((s) => ({ ...s, inProgress: true }));
       } else {
         toast.message(res.message ?? "Scrape requested");
@@ -168,163 +337,141 @@ export function AppLayout() {
     }
   }
 
-  const themeButton = (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="h-9 w-9"
-      onClick={toggleTheme}
-      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      title={theme === "dark" ? "Light mode" : "Dark mode"}
-    >
-      {theme === "dark" ? <Sun className="h-4.5 w-4.5" /> : <Moon className="h-4.5 w-4.5" />}
-    </Button>
+  const activePath = useMemo(() => location.pathname, [location.pathname]);
+
+  const healthDot = (
+    <span
+      className={cn(
+        "size-1.5 shrink-0 rounded-full",
+        scraperUp === true
+          ? "bg-emerald-500"
+          : scraperUp === false
+            ? "bg-amber-500"
+            : "bg-muted-foreground/40",
+      )}
+      aria-hidden
+    />
   );
 
   return (
-    <div className="min-h-dvh">
-      {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-border/60 bg-card/60 backdrop-blur-xl lg:flex">
-        <div className="flex h-16 items-center px-4">
-          <NavLink
-            to="/listings"
-            className="truncate text-[15px] font-semibold tracking-tight transition-colors hover:text-primary"
-          >
-            Watcher
+    <div className="app-backdrop min-h-dvh">
+      {/* ── Desktop sidebar ─────────────────────────────────────────────── */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-sidebar-border bg-sidebar/95 backdrop-blur-xl lg:flex">
+        <div className="flex h-16 items-center px-5">
+          <NavLink to="/listings" aria-label="Watcher home">
+            <Brand tagline />
           </NavLink>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-2" aria-label="Primary">
-          {nav.map(({ to, label, icon: Icon, match }) => {
-            const active = match.test(location.pathname);
-            return (
-              <NavLink
+        <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-3" aria-label="Primary">
+          <div className="space-y-0.5">
+            <p className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              Workspace
+            </p>
+            {primaryNav.map(({ to, label, icon, match }) => (
+              <SidebarLink
                 key={to}
                 to={to}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-secondary text-secondary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                <Icon className={cn("h-4.5 w-4.5", active && "text-primary")} />
-                {label}
-              </NavLink>
-            );
-          })}
-          <NavLink
-            to="/settings"
-            className={cn(
-              "mt-1 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              onSettings
-                ? "bg-secondary text-secondary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            <Settings className={cn("h-4.5 w-4.5", onSettings && "text-primary")} />
-            Settings
-          </NavLink>
+                label={label}
+                icon={icon}
+                active={match.test(activePath)}
+              />
+            ))}
+          </div>
+          <div className="space-y-0.5">
+            <p className="px-2.5 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              System
+            </p>
+            <SidebarLink
+              to={settingsNav.to}
+              label={settingsNav.label}
+              icon={settingsNav.icon}
+              active={settingsNav.match.test(activePath)}
+            />
+          </div>
         </nav>
 
-        <div className="space-y-2 border-t border-border/60 p-3">
-          {scrapeActive ? (
-            <button
-              type="button"
-              onClick={() => navigate("/status")}
-              className="flex w-full items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-left transition-colors hover:bg-amber-500/20"
-              aria-label="Scrape in progress — open Status"
-              title="Open Status"
-            >
-              <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-amber-600 dark:text-amber-400" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-medium">
-                  {scrapeRequest && !scrapeState.inProgress
-                    ? "Starting…"
-                    : scrapePhaseLine(scrapeState.progress)}
-                </span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {scrapeRequest && !scrapeState.inProgress
-                    ? "Requesting scrape…"
-                    : scrapePhaseSub(scrapeState.progress)}
-                </span>
+        <div className="space-y-3 border-t border-sidebar-border p-3">
+          <ScrapeProgressCard
+            active={scrapeActive}
+            progress={scrapeState.progress}
+            pending={scrapeRequest && !scrapeState.inProgress}
+            onOpenStatus={openStatus}
+            onScrape={() => void doScrap()}
+          />
+          <div className="flex items-center justify-between gap-1 px-0.5">
+            <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+              {healthDot}
+              <span className="truncate">
+                Scraper {scraperUp === true ? "up" : scraperUp === false ? "down" : "unknown"}
               </span>
-            </button>
-          ) : (
-            <Button
-              className="w-full"
-              onClick={() => void doScrap()}
-              disabled={scrapeRequest}
-              aria-label="Run scrape now"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Scrape now
-            </Button>
-          )}
-
-          <div className="flex items-center gap-1">
-            {isPushSupported() && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9"
-                disabled={pushBusy}
-                onClick={() => void togglePush()}
-                aria-label={pushOn ? "Disable push notifications" : "Enable push notifications"}
-                title={pushOn ? "Push on" : "Push off"}
-              >
-                {pushOn ? <BellRing className="h-4.5 w-4.5" /> : <BellOff className="h-4.5 w-4.5" />}
-              </Button>
-            )}
-            {themeButton}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="ml-auto h-9 w-9"
-              onClick={() => logout()}
-              aria-label="Log out"
-              title="Log out"
-            >
-              <LogOut className="h-4.5 w-4.5" />
-            </Button>
-          </div>
-
-          <p className="flex items-center gap-1.5 truncate px-1 text-[11px] text-muted-foreground">
-            <span
-              className={cn(
-                "h-1.5 w-1.5 shrink-0 rounded-full",
-                scraperUp === true ? "bg-emerald-500" : "bg-amber-500",
+            </span>
+            <div className="flex shrink-0 items-center gap-0.5">
+              {pushSupported && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={pushBusy}
+                      onClick={() => void togglePush()}
+                      aria-label={pushOn ? "Disable push notifications" : "Enable push notifications"}
+                    >
+                      {pushOn ? <BellRing /> : <BellOff />}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{pushOn ? "Push is on" : "Enable push"}</TooltipContent>
+                </Tooltip>
               )}
-            />
-            Scraper {scraperUp === true ? "up" : scraperUp === false ? "down" : "unknown"}
-          </p>
+              <ThemeToggle />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label="Account menu">
+                    <UserRound />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuLabel className="font-normal">
+                    <p className="text-sm font-medium text-foreground">API session</p>
+                    <p className="text-xs text-muted-foreground">Signed in</p>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => navigate("/settings")}>
+                    <Settings />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem destructive onSelect={() => logout()}>
+                    <LogOut />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
         </div>
       </aside>
 
-      {/* Compact sticky top bar (mobile + tablet) */}
+      {/* ── Mobile top bar ─────────────────────────────────────────────── */}
       <header
-        className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 lg:hidden"
+        className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/85 lg:hidden"
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
-        <div className="flex h-14 items-center gap-2 px-3 sm:px-4">
-          <NavLink
-            to="/listings"
-            className="min-w-0 flex-1 truncate text-[15px] font-semibold tracking-tight transition-colors hover:text-primary"
-          >
-            Watcher
+        <div className="flex h-14 items-center gap-2 px-3.5 sm:px-4">
+          <NavLink to="/listings" className="min-w-0" aria-label="Watcher home">
+            <Brand />
           </NavLink>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {scrapeActive ? (
               <button
                 type="button"
-                onClick={() => navigate("/status")}
-                className="flex h-9 items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-medium transition-colors hover:bg-amber-500/20"
+                onClick={openStatus}
+                className="flex h-9 max-w-[9.5rem] items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 text-xs font-medium text-amber-900 transition-colors hover:bg-amber-500/15 dark:text-amber-200"
                 aria-label="Scrape in progress — open Status"
-                title="Open Status"
               >
-                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-amber-600 dark:text-amber-400" />
-                <span className="max-w-[8.5rem] truncate">
+                <RefreshCw className="size-3.5 shrink-0 animate-spin text-amber-600 dark:text-amber-400" />
+                <span className="truncate">
                   {scrapeRequest && !scrapeState.inProgress
                     ? "Starting…"
                     : scrapePhaseLine(scrapeState.progress)}
@@ -332,135 +479,136 @@ export function AppLayout() {
               </button>
             ) : (
               <Button
-                variant="default"
                 size="sm"
-                className="h-9 gap-1.5 rounded-full px-3.5 shadow-sm"
+                className="h-9 rounded-full px-3"
                 onClick={() => void doScrap()}
                 disabled={scrapeRequest}
                 aria-label="Run scrape now"
               >
-                <RefreshCw className="h-4 w-4" />
-                <span className="hidden sm:inline">Scrape</span>
+                <RefreshCw />
+                <span>Scrape</span>
               </Button>
             )}
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 rounded-full"
-                  aria-label="More options"
-                >
-                  <MoreHorizontal className="h-5 w-5" />
+            <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full" aria-label="Open menu">
+                  <Menu />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>Settings</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onSelect={() => navigate("/settings")}
-                  className={cn(onSettings && "bg-accent")}
-                >
-                  <Settings />
-                  <span className="flex-1">System settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={toggleTheme}>
-                  {theme === "dark" ? <Sun /> : <Moon />}
-                  <span className="flex-1">{theme === "dark" ? "Light mode" : "Dark mode"}</span>
-                </DropdownMenuItem>
-                {isPushSupported() && (
-                  <DropdownMenuItem
-                    disabled={pushBusy}
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      void togglePush();
-                    }}
-                  >
-                    {pushOn ? <BellRing /> : <BellOff />}
-                    <span className="flex-1">{pushOn ? "Push on" : "Enable push"}</span>
-                    <span
-                      className={cn(
-                        "h-2 w-2 rounded-full",
-                        pushOn ? "bg-emerald-500" : "bg-muted-foreground/30",
-                      )}
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[min(20.5rem,85vw)] gap-0 p-0 sm:max-w-sm">
+                <SheetHeader className="pr-14">
+                  <SheetTitle className="sr-only">Menu</SheetTitle>
+                  <SheetDescription className="sr-only">
+                    Navigation, scrape controls and app settings
+                  </SheetDescription>
+                  <Brand tagline />
+                </SheetHeader>
+
+                <div className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
+                  <nav className="space-y-0.5" aria-label="Primary">
+                    {mobileNav.map(({ to, label, icon, match }) => (
+                      <SidebarLink
+                        key={to}
+                        to={to}
+                        label={label}
+                        icon={icon}
+                        active={match.test(activePath)}
+                        onClick={() => setMenuOpen(false)}
+                      />
+                    ))}
+                  </nav>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                      Scraper
+                    </p>
+                    <ScrapeProgressCard
+                      active={scrapeActive}
+                      progress={scrapeState.progress}
+                      pending={scrapeRequest && !scrapeState.inProgress}
+                      onOpenStatus={openStatus}
+                      onScrape={() => void doScrap()}
                     />
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem disabled className="opacity-100">
-                  <Activity />
-                  <span className="flex-1">Scraper</span>
-                  <span
-                    className={cn(
-                      "text-xs font-medium",
-                      scraperUp === true
-                        ? "text-emerald-600"
-                        : scraperUp === false
-                          ? "text-amber-600"
-                          : "text-muted-foreground",
-                    )}
+                    <button
+                      type="button"
+                      onClick={openStatus}
+                      className="flex w-full items-center justify-between rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Activity className="size-3.5" />
+                        Scrape history &amp; services
+                      </span>
+                      <ChevronRight className="size-3.5" />
+                    </button>
+                  </div>
+
+                  <Separator />
+
+                  <PushSwitch
+                    supported={pushSupported}
+                    pushOn={pushOn}
+                    busy={pushBusy}
+                    onChange={() => void togglePush()}
+                  />
+                  <ThemeSwitch />
+                </div>
+
+                <SheetFooter className="gap-2">
+                  <div className="flex items-center gap-1.5 pb-1 text-[11px] text-muted-foreground">
+                    {healthDot}
+                    Scraper {scraperUp === true ? "up" : scraperUp === false ? "down" : "unknown"}
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="justify-start text-destructive hover:text-destructive"
+                    onClick={() => logout()}
                   >
-                    {scraperUp === true ? "Up" : scraperUp === false ? "Down" : "—"}
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem destructive onSelect={() => logout()}>
-                  <LogOut />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <LogOut />
+                    Log out
+                  </Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
 
-      {/* Page shell — offset by sidebar on desktop */}
-      <div className="lg:pl-60">
-        <main
-          className={cn(
-            "mx-auto max-w-5xl px-3 py-4 sm:px-4 sm:py-6",
-            // room for bottom nav + safe area; less padding on detail (has its own sticky bar)
-            isDetail
-              ? "pb-[calc(5.5rem+env(safe-area-inset-bottom))] lg:pb-8"
-              : "pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8",
-          )}
-        >
+      {/* ── Page shell ─────────────────────────────────────────────────── */}
+      <div className="lg:pl-64">
+        <main className="mx-auto w-full max-w-6xl px-3.5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pt-6 lg:pb-10 lg:pt-8">
           <Outlet />
         </main>
       </div>
 
-      {/* Bottom nav (mobile + tablet) */}
+      {/* ── Mobile bottom nav ──────────────────────────────────────────── */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-border/70 bg-background/90 backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/90 lg:hidden"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         aria-label="Primary"
       >
-        <div className="mx-auto flex max-w-5xl">
-          {nav.map(({ to, label, icon: Icon, match }) => {
-            const active = match.test(location.pathname);
+        <div className="mx-auto flex max-w-lg items-stretch">
+          {mobileNav.map(({ to, label, icon: Icon, match }) => {
+            const active = match.test(activePath);
             return (
               <NavLink
                 key={to}
                 to={to}
                 className={cn(
-                  "flex min-h-[3.5rem] flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors",
+                  "relative flex min-h-[3.5rem] flex-1 touch-manipulation flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors",
                   active ? "text-primary" : "text-muted-foreground active:bg-muted/50",
                 )}
               >
-                <Icon className={cn("h-5 w-5", active && "stroke-[2.25px]")} />
+                {active && (
+                  <span className="absolute top-0 h-0.5 w-7 rounded-full bg-primary" aria-hidden />
+                )}
+                <Icon className={cn("size-[1.15rem]", active && "stroke-[2.4px]")} />
                 {label}
               </NavLink>
             );
           })}
-          <NavLink
-            to="/settings"
-            className={cn(
-              "flex min-h-[3.5rem] flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors",
-              onSettings ? "text-primary" : "text-muted-foreground active:bg-muted/50",
-            )}
-          >
-            <Settings className={cn("h-5 w-5", onSettings && "stroke-[2.25px]")} />
-            Settings
-          </NavLink>
         </div>
       </nav>
     </div>

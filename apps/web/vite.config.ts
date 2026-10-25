@@ -22,7 +22,7 @@ export default defineConfig({
         short_name: "Watcher",
         description: "Deal watcher for jofogas, ingatlan.com, hasznaltauto.hu and hardverapro.hu",
         theme_color: "#3b5bdb",
-        background_color: "#f8fafc",
+        background_color: "#f7f8fa",
         display: "standalone",
         orientation: "any",
         scope: "/",

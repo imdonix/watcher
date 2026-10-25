@@ -5,6 +5,7 @@ import { registerSW } from "virtual:pwa-register";
 import { Toaster, toast } from "sonner";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ThemeProvider, useTheme } from "@/hooks/use-theme";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { App } from "./App";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import "./index.css";
@@ -78,12 +79,14 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ErrorBoundary>
       <ThemeProvider>
-        <BrowserRouter>
-          <AuthProvider>
-            <App />
-            <AppToaster />
-          </AuthProvider>
-        </BrowserRouter>
+        <TooltipProvider>
+          <BrowserRouter>
+            <AuthProvider>
+              <App />
+              <AppToaster />
+            </AuthProvider>
+          </BrowserRouter>
+        </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
   </StrictMode>,

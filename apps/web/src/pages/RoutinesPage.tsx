@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  Car,
+  ChevronDown,
   ChevronRight,
+  Copy,
+  Cpu,
   ExternalLink,
+  House,
+  MoreHorizontal,
+  Newspaper,
+  Pencil,
   Plus,
   Save,
   Settings2,
@@ -12,13 +20,33 @@ import { toast } from "sonner";
 import type { EngineMeta, EngineOption } from "@watcher/shared";
 import { buildRoutinePreview, formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
-import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Field } from "@/components/Field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -26,11 +54,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { PageLoader } from "@/components/Spinner";
-import { cn } from "@/lib/utils";
 
-type Routine = Record<string, unknown> & { engine: number; keywords?: string };
+type Routine = Record<string, unknown> & {
+  engine: number;
+  keywords?: string;
+  enabled?: boolean;
+};
 
 /** Which editor screen is open: list, new, or existing index */
 type View = { kind: "list" } | { kind: "new" } | { kind: "edit"; index: number };
@@ -48,6 +83,8 @@ const ADVANCED_IDS = new Set([
   "noIced",
   "shippingOnly",
 ]);
+
+const WIDE_IDS = new Set(["keywords", "domain", "location", "key", "category", "search"]);
 
 function routineTitle(r: Routine): string {
   const kw = r.keywords != null ? String(r.keywords).trim() : "";
@@ -79,6 +116,31 @@ function priceSummary(r: Routine): string | null {
   return null;
 }
 
+function filterCount(r: Routine): number {
+  const skip = new Set(["engine", "_id", "enabled", "aiPrompt"]);
+  let n = 0;
+  for (const [key, value] of Object.entries(r)) {
+    if (skip.has(key)) continue;
+    if (value === "" || value == null || value === false) continue;
+    n++;
+  }
+  return n;
+}
+
+function EngineIcon({ slug, className }: { slug?: string | null; className?: string }) {
+  const cls = cn("size-4", className);
+  switch (slug) {
+    case "ingatlan.com":
+      return <House className={cls} />;
+    case "hasznaltauto.hu":
+      return <Car className={cls} />;
+    case "hardverapro.hu":
+      return <Cpu className={cls} />;
+    default:
+      return <Newspaper className={cls} />;
+  }
+}
+
 function defaultsFor(engine: EngineMeta | undefined): Record<string, unknown> {
   const defaults: Record<string, unknown> = {};
   engine?.options.forEach((o) => {
@@ -100,7 +162,7 @@ function FieldControl({
     return (
       <label
         htmlFor={opt.id}
-        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-border/70 bg-card px-3.5 transition-colors hover:bg-muted/40"
+        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border bg-card px-3.5 transition-colors hover:bg-muted/40"
       >
         <Checkbox
           id={opt.id}
@@ -110,7 +172,7 @@ function FieldControl({
         <div className="min-w-0 flex-1 py-2.5">
           <span className="text-sm font-medium leading-none">{opt.name}</span>
           {opt.description && (
-            <p className="mt-1 text-xs text-muted-foreground">{opt.description}</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{opt.description}</p>
           )}
         </div>
       </label>
@@ -119,19 +181,14 @@ function FieldControl({
 
   if (opt.type === "select") {
     const selectValue =
-      value != null && String(value) !== ""
-        ? String(value)
-        : String(opt.default || "__empty");
+      value != null && String(value) !== "" ? String(value) : String(opt.default || "__empty");
     return (
-      <div className="space-y-1.5">
-        <Label htmlFor={opt.id} className="text-xs font-medium text-muted-foreground">
-          {opt.name}
-        </Label>
+      <Field label={opt.name} htmlFor={opt.id} description={opt.description}>
         <Select
           value={selectValue}
           onValueChange={(v) => onChange(v === "__empty" ? "" : v)}
         >
-          <SelectTrigger id={opt.id} className="h-11 rounded-xl">
+          <SelectTrigger id={opt.id}>
             <SelectValue placeholder={opt.placeholder || opt.name} />
           </SelectTrigger>
           <SelectContent>
@@ -142,23 +199,16 @@ function FieldControl({
             ))}
           </SelectContent>
         </Select>
-        {opt.description && (
-          <p className="text-[11px] leading-snug text-muted-foreground">{opt.description}</p>
-        )}
-      </div>
+      </Field>
     );
   }
 
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={opt.id} className="text-xs font-medium text-muted-foreground">
-        {opt.name}
-      </Label>
+    <Field label={opt.name} htmlFor={opt.id} description={opt.description}>
       <Input
         id={opt.id}
         type={opt.type === "number" ? "number" : opt.type === "url" ? "url" : "text"}
         placeholder={opt.placeholder}
-        className="h-11 rounded-xl"
         value={value != null ? String(value) : ""}
         onChange={(e) =>
           onChange(
@@ -170,10 +220,48 @@ function FieldControl({
           )
         }
       />
-      {opt.description && (
-        <p className="text-[11px] leading-snug text-muted-foreground">{opt.description}</p>
-      )}
-    </div>
+    </Field>
+  );
+}
+
+function PreviewCard({
+  preview,
+}: {
+  preview: { path?: string | null; url?: string | null; hint?: string | null };
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm">Live preview</CardTitle>
+        <CardDescription>The exact URL this routine will scrape.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2.5">
+        {preview.path || preview.url ? (
+          <>
+            <code className="block break-all rounded-md bg-muted/70 px-2.5 py-2 font-mono text-[11px] leading-relaxed">
+              {preview.path ?? preview.url}
+            </code>
+            {preview.url && preview.path && preview.url !== preview.path && (
+              <p className="break-all font-mono text-[10px] leading-relaxed text-muted-foreground">
+                {preview.url}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {preview.hint ?? "Fill in the fields to build a search URL."}
+          </p>
+        )}
+        {preview.url && (
+          <Button variant="outline" size="sm" className="w-full" asChild>
+            <a href={preview.url} target="_blank" rel="noreferrer">
+              <ExternalLink />
+              Open in browser
+            </a>
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -184,8 +272,12 @@ export function RoutinesPage() {
   const [engineId, setEngineId] = useState<number | null>(null);
   const [form, setForm] = useState<Record<string, unknown>>({});
   const [formDirty, setFormDirty] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
 
   const currentEngine = useMemo(
     () => engines.find((e) => e.id === (engineId ?? engines[0]?.id)),
@@ -196,7 +288,9 @@ export function RoutinesPage() {
     try {
       const [eng, rts] = await Promise.all([api.engines(), api.routines()]);
       setEngines(eng);
-      setRoutines(rts as Routine[]);
+      setRoutines(
+        (rts as Routine[]).map((r) => ({ ...r, enabled: r.enabled !== false })),
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load");
     } finally {
@@ -216,8 +310,9 @@ export function RoutinesPage() {
   function openNew() {
     const eng = engines[0];
     setEngineId(eng?.id ?? null);
-    setForm(defaultsFor(eng));
+    setForm({ ...defaultsFor(eng), enabled: true });
     setFormDirty(false);
+    setAdvancedOpen(false);
     setView({ kind: "new" });
   }
 
@@ -225,19 +320,24 @@ export function RoutinesPage() {
     const r = routines[index];
     if (!r) return;
     setEngineId(Number(r.engine));
-    const { engine: _e, _id, enabled, ...rest } = r;
-    setForm(rest);
+    const { engine: _e, _id, ...rest } = r;
+    setForm({ ...rest, enabled: r.enabled !== false });
     setFormDirty(false);
+    setAdvancedOpen(false);
     setView({ kind: "edit", index });
+  }
+
+  function leaveEditor() {
+    setFormDirty(false);
+    setView({ kind: "list" });
   }
 
   function goList() {
     if (formDirty && view.kind !== "list") {
-      const ok = window.confirm("Discard unsaved changes?");
-      if (!ok) return;
+      setDiscardOpen(true);
+      return;
     }
-    setFormDirty(false);
-    setView({ kind: "list" });
+    leaveEditor();
   }
 
   function onEngineChange(id: string) {
@@ -247,6 +347,7 @@ export function RoutinesPage() {
     setForm((prev) => ({
       ...defaultsFor(eng),
       keywords: prev.keywords,
+      enabled: prev.enabled !== false,
     }));
     setFormDirty(true);
   }
@@ -269,7 +370,11 @@ export function RoutinesPage() {
 
   async function saveRoutine() {
     if (!currentEngine) return;
-    const routine: Routine = { ...form, engine: currentEngine.id };
+    const routine: Routine = {
+      ...form,
+      engine: currentEngine.id,
+      enabled: form.enabled !== false,
+    };
 
     let next: Routine[];
     if (view.kind === "new") {
@@ -281,23 +386,36 @@ export function RoutinesPage() {
     }
 
     const ok = await persist(next);
-    if (ok) {
-      if (view.kind === "new") {
-        setView({ kind: "edit", index: next.length - 1 });
-      }
-      // stay in editor after save
+    if (ok && view.kind === "new") {
+      setView({ kind: "edit", index: next.length - 1 });
     }
   }
 
   async function deleteRoutine() {
     if (view.kind !== "edit") return;
-    if (!window.confirm("Delete this routine?")) return;
     const next = routines.filter((_, i) => i !== view.index);
+    setDeleteOpen(false);
     const ok = await persist(next);
-    if (ok) {
-      setView({ kind: "list" });
-      setFormDirty(false);
-    }
+    if (ok) leaveEditor();
+  }
+
+  async function deleteFromList(index: number) {
+    const next = routines.filter((_, i) => i !== index);
+    setPendingDelete(null);
+    await persist(next);
+  }
+
+  async function duplicateRoutine(index: number) {
+    const r = routines[index];
+    if (!r) return;
+    const next = [...routines];
+    next.splice(index + 1, 0, { ...r });
+    await persist(next);
+  }
+
+  async function toggleEnabled(index: number, enabled: boolean) {
+    const next = routines.map((r, i) => (i === index ? { ...r, enabled } : r));
+    await persist(next);
   }
 
   const preview = useMemo(
@@ -315,81 +433,145 @@ export function RoutinesPage() {
   );
   const checkboxAdvanced = advancedOptions.filter((o) => o.type === "checkbox");
   const otherAdvanced = advancedOptions.filter((o) => o.type !== "checkbox");
+  const activeAdvanced = advancedOptions.filter((o) => {
+    const v = form[o.id];
+    return v !== "" && v != null && v !== false && v !== o.default;
+  }).length;
 
-  if (loading) return <PageLoader />;
+  if (loading) return <PageLoader label="Loading routines…" />;
 
   /* ───────────── LIST ───────────── */
   if (view.kind === "list") {
+    const enabledCount = routines.filter((r) => r.enabled !== false).length;
+
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">
-            {routines.length} search routine{routines.length === 1 ? "" : "s"}
-          </p>
-          <Button size="sm" className="h-10 rounded-full px-4" onClick={openNew}>
-            <Plus className="h-4 w-4" />
-            New
-          </Button>
-        </div>
+      <div className="space-y-5">
+        <PageHeader
+          title="Routines"
+          description={
+            routines.length > 0
+              ? `${routines.length} search routine${routines.length === 1 ? "" : "s"} · ${enabledCount} enabled. Disabled routines are skipped by scheduled scrapes.`
+              : "Search rules that tell Watcher what to look for on each site."
+          }
+          actions={
+            <Button size="sm" onClick={openNew}>
+              <Plus />
+              New routine
+            </Button>
+          }
+        />
 
         {routines.length === 0 ? (
           <EmptyState
-            icon={<Settings2 className="h-6 w-6" />}
+            icon={<Settings2 className="size-5" />}
             title="No routines yet"
             description="Create a search routine to start watching deals on jofogas, ingatlan.com, hasznaltauto or hardverapro."
             action={
-              <Button className="rounded-full" onClick={openNew}>
-                <Plus className="h-4 w-4" />
+              <Button onClick={openNew}>
+                <Plus />
                 Create routine
               </Button>
             }
           />
         ) : (
-          <ul className="grid gap-2.5 sm:grid-cols-2">
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {routines.map((r, i) => {
               const eng = engines.find((e) => e.id === Number(r.engine));
               const price = priceSummary(r);
               const prev = buildRoutinePreview(eng?.slug, r);
+              const enabled = r.enabled !== false;
+              const ai = typeof r.aiPrompt === "string" && r.aiPrompt.trim().length > 0;
+              const title = routineTitle(r);
+
               return (
-                <li key={i}>
-                  <button
-                    type="button"
-                    onClick={() => openEdit(i)}
+                <li key={`${r._id ?? "new"}-${i}`} className="min-w-0">
+                  <Card
                     className={cn(
-                      "group flex w-full items-stretch gap-0 overflow-hidden rounded-2xl border border-border/80 bg-card text-left shadow-sm",
-                      "transition-all hover:border-primary/30 hover:shadow-md active:scale-[0.99]",
-                      "touch-manipulation",
+                      "group relative w-full min-w-0 gap-0 overflow-hidden py-0 transition-all hover:border-primary/30 hover:shadow-card-hover",
+                      !enabled && "opacity-85",
                     )}
                   >
-                    <div className="flex min-w-0 flex-1 flex-col gap-1.5 p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="truncate text-[15px] font-semibold leading-snug">
-                          {routineTitle(r)}
-                        </h3>
-                        <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant="secondary" className="font-normal">
-                          {eng?.name ?? "engine"}
-                        </Badge>
-                        {typeof r.aiPrompt === "string" && r.aiPrompt.trim() && (
-                          <Badge variant="info" className="font-normal" title="AI evaluation prompt set">
-                            AI
+                    <CardHeader className="gap-2 px-4 pb-0 pt-4">
+                      <div className="flex items-center gap-2">
+                        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
+                          <EngineIcon slug={eng?.slug} />
+                        </span>
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+                          <Badge variant="outline" className="max-w-full truncate">
+                            {eng?.name ?? "engine"}
                           </Badge>
-                        )}
-                        {price && (
-                          <span className="text-xs font-medium tabular-nums text-muted-foreground">
-                            {price}
-                          </span>
-                        )}
+                          {ai && <Badge variant="info">AI</Badge>}
+                          {!enabled && <Badge variant="warning">Paused</Badge>}
+                        </div>
+                        <div className="relative z-10">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-muted-foreground"
+                                aria-label={`Actions for ${title}`}
+                              >
+                                <MoreHorizontal />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-44">
+                              <DropdownMenuItem onSelect={() => openEdit(i)}>
+                                <Pencil />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => void duplicateRoutine(i)}>
+                                <Copy />
+                                Duplicate
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                destructive
+                                onSelect={() => setPendingDelete(i)}
+                              >
+                                <Trash2 />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
-                      {(prev.path || prev.url) && (
-                        <p className="line-clamp-1 font-mono text-[10px] text-muted-foreground/90">
-                          {prev.path ?? prev.url}
+                      <CardTitle className="line-clamp-2 pt-1 text-[15px] leading-snug">
+                        {title}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 px-4 pb-3 pt-2">
+                      {price && (
+                        <p className="text-xs font-medium tabular-nums text-muted-foreground">
+                          {price}
                         </p>
                       )}
-                    </div>
-                  </button>
+                      <p className="truncate font-mono text-[10px] leading-relaxed text-muted-foreground/90">
+                        {prev.path ?? prev.url ?? "No search URL yet"}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {filterCount(r)} active filter{filterCount(r) === 1 ? "" : "s"}
+                      </p>
+                    </CardContent>
+                    <CardFooter className="relative z-10 justify-between gap-2 border-t bg-muted/20 px-4 py-2">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                        {enabled ? "Enabled" : "Paused"}
+                        <ChevronRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+                      </span>
+                      <Switch
+                        checked={enabled}
+                        disabled={saving}
+                        onCheckedChange={(v) => void toggleEnabled(i, v)}
+                        aria-label={`${enabled ? "Pause" : "Enable"} ${title}`}
+                      />
+                    </CardFooter>
+                    <button
+                      type="button"
+                      className="absolute inset-0 z-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+                      onClick={() => openEdit(i)}
+                      aria-label={`Edit ${title}`}
+                    />
+                  </Card>
                 </li>
               );
             })}
@@ -398,240 +580,349 @@ export function RoutinesPage() {
               <button
                 type="button"
                 onClick={openNew}
-                className={cn(
-                  "flex h-full min-h-[6.5rem] w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border bg-muted/20",
-                  "text-sm font-medium text-muted-foreground transition-colors",
-                  "hover:border-primary/40 hover:bg-muted/40 hover:text-foreground",
-                  "touch-manipulation",
-                )}
+                className="flex h-full min-h-[12rem] w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-card/40 p-6 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/40 hover:text-foreground"
               >
-                <Plus className="h-5 w-5" />
+                <span className="grid size-9 place-items-center rounded-lg bg-muted">
+                  <Plus className="size-4" />
+                </span>
                 Add routine
               </button>
             </li>
           </ul>
         )}
+
+        <ConfirmDialog
+          open={pendingDelete != null}
+          onOpenChange={(open) => !open && setPendingDelete(null)}
+          title="Delete this routine?"
+          description={
+            pendingDelete != null
+              ? `“${routineTitle(routines[pendingDelete])}” will be removed. Existing listings stay in your history.`
+              : undefined
+          }
+          confirmLabel="Delete"
+          destructive
+          onConfirm={() => {
+            if (pendingDelete != null) void deleteFromList(pendingDelete);
+          }}
+        />
       </div>
     );
   }
 
   /* ───────────── EDITOR ───────────── */
-  const editingTitle = view.kind === "new" ? "New routine" : "Edit routine";
+  const editing = view.kind === "edit";
+  const editingTitle = editing ? "Edit routine" : "New routine";
+  const enabled = form.enabled !== false;
 
   return (
-    <div className="space-y-4 pb-24 sm:pb-8">
-      {/* Top bar */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="-ml-2 h-10 rounded-full px-2.5"
-          onClick={goList}
-        >
-          <ArrowLeft className="h-4 w-4" />
+    <div className="space-y-4 pb-24 lg:pb-0">
+      <div className="flex items-center justify-between gap-2">
+        <Button variant="ghost" size="sm" className="-ml-2" onClick={goList}>
+          <ArrowLeft />
           Routines
         </Button>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-semibold">{editingTitle}</h2>
-          {formDirty && (
-            <p className="text-xs text-amber-700 dark:text-amber-500">Unsaved changes</p>
+        <div className="flex items-center gap-1.5">
+          <Badge variant={enabled ? "success" : "secondary"}>
+            {enabled ? "Enabled" : "Paused"}
+          </Badge>
+          {editing && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
+              disabled={saving}
+              aria-label="Delete routine"
+            >
+              <Trash2 />
+            </Button>
           )}
         </div>
-        {view.kind === "edit" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 shrink-0 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => void deleteRoutine()}
-            disabled={saving}
-            aria-label="Delete routine"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        )}
+      </div>
+      <div className="space-y-1">
+        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{editingTitle}</h1>
+        <p
+          className={cn(
+            "text-xs",
+            formDirty ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+          )}
+        >
+          {formDirty ? "Unsaved changes" : "All changes saved"}
+        </p>
       </div>
 
-      {/* Live preview */}
-      <Card className="overflow-hidden border-border/80 shadow-sm">
-        <CardContent className="space-y-2 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Preview
-            </span>
-            {preview.url && (
-              <a
-                href={preview.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-              >
-                Open in browser
-                <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-5">
+        <div className="min-w-0 space-y-4">
+          <div className="lg:hidden">
+            <PreviewCard preview={preview} />
           </div>
-          {preview.path || preview.url ? (
-            <>
-              <code className="block break-all font-mono text-[12px] leading-relaxed text-foreground">
-                {preview.path ?? preview.url}
-              </code>
-              {preview.url && preview.path && preview.url !== preview.path && (
-                <p className="break-all font-mono text-[10px] text-muted-foreground">
-                  {preview.url}
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {preview.hint ?? "Fill in the fields to build a search URL"}
-            </p>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Engine */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Engine
-        </h3>
-        <div className="grid gap-2 sm:grid-cols-3">
-          {engines.map((e) => {
-            const active = currentEngine?.id === e.id;
-            return (
-              <button
-                key={e.id}
-                type="button"
-                onClick={() => onEngineChange(String(e.id))}
-                className={cn(
-                  "rounded-xl border px-3 py-3 text-left text-sm font-medium transition-all touch-manipulation",
-                  active
-                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                    : "border-border/80 bg-card hover:border-primary/30 hover:bg-muted/40",
-                )}
-              >
-                {e.name}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+          {/* Engine */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Site</CardTitle>
+              <CardDescription>Which marketplace this routine searches.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {engines.map((e) => {
+                  const active = currentEngine?.id === e.id;
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => onEngineChange(String(e.id))}
+                      className={cn(
+                        "flex min-h-[4.5rem] min-w-0 flex-col items-center justify-center gap-1.5 rounded-lg border p-2.5 text-center text-sm transition-all",
+                        active
+                          ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20"
+                          : "bg-card hover:border-primary/30 hover:bg-muted/40",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "grid size-8 shrink-0 place-items-center rounded-md",
+                          active
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        <EngineIcon slug={e.slug} />
+                      </span>
+                      <span className="w-full break-words text-[13px] font-medium leading-tight">
+                        {e.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Main filters */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Search
-        </h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {mainOptions.map((opt) => (
-            <div
-              key={opt.id}
-              className={cn(
-                opt.type === "checkbox" && "sm:col-span-2",
-                (opt.id === "keywords" ||
-                  opt.id === "domain" ||
-                  opt.id === "location" ||
-                  opt.id === "key" ||
-                  opt.id === "category" ||
-                  opt.id === "search") &&
-                  "sm:col-span-2",
-              )}
-            >
-              <FieldControl
-                opt={opt}
-                value={form[opt.id]}
-                onChange={(v) => setField(opt.id, v)}
-              />
-            </div>
-          ))}
-        </div>
-      </section>
+          {/* Search filters */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Search</CardTitle>
+              <CardDescription>
+                Core filters for {currentEngine?.name ?? "this engine"}. Changes preview live.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3.5 sm:grid-cols-2">
+                {mainOptions.map((opt) => (
+                  <div
+                    key={opt.id}
+                    className={cn(
+                      opt.type === "checkbox" && "sm:col-span-2",
+                      WIDE_IDS.has(opt.id) && "sm:col-span-2",
+                    )}
+                  >
+                    <FieldControl
+                      opt={opt}
+                      value={form[opt.id]}
+                      onChange={(v) => setField(opt.id, v)}
+                    />
+                  </div>
+                ))}
+              </div>
 
-      {/* Advanced */}
-      {(otherAdvanced.length > 0 || checkboxAdvanced.length > 0) && (
-        <section className="space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Options
-          </h3>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {otherAdvanced.map((opt) => (
-              <div
-                key={opt.id}
-                className={cn(
-                  (opt.id === "search" || opt.id === "extraFilters") && "sm:col-span-2",
-                )}
-              >
-                <FieldControl
-                  opt={opt}
-                  value={form[opt.id]}
-                  onChange={(v) => setField(opt.id, v)}
+              <div className="mt-4 flex items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2.5">
+                <div className="min-w-0">
+                  <Label htmlFor="routine-enabled" className="text-sm">
+                    Routine enabled
+                  </Label>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    Paused routines are skipped by scheduled scrapes.
+                  </p>
+                </div>
+                <Switch
+                  id="routine-enabled"
+                  checked={enabled}
+                  onCheckedChange={(v) => setField("enabled", v)}
                 />
               </div>
-            ))}
-          </div>
-          {checkboxAdvanced.length > 0 && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {checkboxAdvanced.map((opt) => (
-                <FieldControl
-                  key={opt.id}
-                  opt={opt}
-                  value={form[opt.id]}
-                  onChange={(v) => setField(opt.id, v)}
-                />
-              ))}
-            </div>
+            </CardContent>
+          </Card>
+
+          {/* Advanced */}
+          {(otherAdvanced.length > 0 || checkboxAdvanced.length > 0) && (
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen} asChild>
+              <Card className="gap-0 py-0">
+                <CollapsibleTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 p-4 text-left sm:px-6"
+                  >
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-2 text-base font-semibold tracking-tight">
+                        Advanced options
+                        {activeAdvanced > 0 && (
+                          <Badge variant="secondary" className="tabular-nums">
+                            {activeAdvanced}
+                          </Badge>
+                        )}
+                      </p>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        Pagination, sorting and engine-specific flags.
+                      </p>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        "size-4 shrink-0 text-muted-foreground transition-transform",
+                        advancedOpen && "rotate-180",
+                      )}
+                    />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="space-y-3.5 border-t pt-4">
+                    <div className="grid gap-3.5 sm:grid-cols-2">
+                      {otherAdvanced.map((opt) => (
+                        <div
+                          key={opt.id}
+                          className={cn(
+                            (opt.id === "search" || opt.id === "extraFilters") &&
+                              "sm:col-span-2",
+                          )}
+                        >
+                          <FieldControl
+                            opt={opt}
+                            value={form[opt.id]}
+                            onChange={(v) => setField(opt.id, v)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {checkboxAdvanced.length > 0 && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {checkboxAdvanced.map((opt) => (
+                          <FieldControl
+                            key={opt.id}
+                            opt={opt}
+                            value={form[opt.id]}
+                            onChange={(v) => setField(opt.id, v)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
           )}
-        </section>
-      )}
 
-      {/* AI evaluation */}
-      <section className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          AI evaluation
-        </h3>
-        <div className="space-y-1.5">
-          <Label htmlFor="aiPrompt">Evaluation prompt (optional)</Label>
-          <Textarea
-            id="aiPrompt"
-            rows={4}
-            value={typeof form.aiPrompt === "string" ? form.aiPrompt : ""}
-            onChange={(e) => setField("aiPrompt", e.target.value)}
-            placeholder="When is a listing a good match? e.g. Magánszemély hirdetése, bútorozott lakás, ár 150 000 Ft alatt…"
-          />
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            After each scrape an AI model checks listings of this engine against this prompt and
-            shows a pass/fail badge with a one-line reason. Write the prompt in the language you
-            want reasons in. Needs an API key on the Settings page — leave empty to skip AI
-            evaluation for this routine.
-          </p>
+          {/* AI */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <span className="grid size-6 place-items-center rounded-md bg-primary/10 text-primary">
+                  <Settings2 className="size-3.5" />
+                </span>
+                AI evaluation
+              </CardTitle>
+              <CardDescription>
+                After each scrape, an AI model checks listings from this routine against the
+                prompt below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Field
+                label="Evaluation prompt (optional)"
+                htmlFor="aiPrompt"
+                description="Write it in the language you want the reasons in. Leave empty to skip AI for this routine. Requires an API key in Settings."
+              >
+                <Textarea
+                  id="aiPrompt"
+                  rows={4}
+                  value={typeof form.aiPrompt === "string" ? form.aiPrompt : ""}
+                  onChange={(e) => setField("aiPrompt", e.target.value)}
+                  placeholder="When is a listing a good match? e.g. Magánszemély hirdetése, bútorozott lakás, ár 150 000 Ft alatt…"
+                />
+              </Field>
+            </CardContent>
+          </Card>
         </div>
-      </section>
 
-      {/* Sticky save bar (mobile) + desktop actions */}
+        {/* Desktop rail */}
+        <aside className="hidden min-w-0 space-y-4 lg:sticky lg:top-6 lg:block lg:self-start">
+          <PreviewCard preview={preview} />
+          <Card>
+            <CardContent className="space-y-2">
+              <Button
+                className="w-full"
+                onClick={() => void saveRoutine()}
+                disabled={saving || !formDirty || !currentEngine}
+              >
+                <Save />
+                {saving ? "Saving…" : formDirty ? "Save changes" : "Saved"}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={goList}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <p className="pt-1 text-center text-[11px] text-muted-foreground">
+                {formDirty
+                  ? "You have unsaved changes."
+                  : "Routine is up to date."}
+              </p>
+            </CardContent>
+          </Card>
+        </aside>
+      </div>
+
+      {/* Mobile save bar */}
       <div
-        className="fixed inset-x-0 z-30 border-t border-border/70 bg-background/95 p-3 backdrop-blur-xl sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none"
-        style={{
-          bottom: "calc(3.5rem + env(safe-area-inset-bottom))",
-        }}
+        className="fixed inset-x-0 z-30 border-t bg-background/95 p-2.5 backdrop-blur-xl lg:hidden"
+        style={{ bottom: "calc(3.5rem + env(safe-area-inset-bottom))" }}
       >
-        <div className="mx-auto flex max-w-5xl gap-2 sm:pt-2">
+        <div className="mx-auto flex max-w-lg gap-2">
           <Button
             variant="outline"
-            className="h-12 flex-1 rounded-xl sm:h-10 sm:flex-none sm:px-5"
+            className="h-11 flex-1"
             onClick={goList}
             disabled={saving}
           >
             Cancel
           </Button>
           <Button
-            className="h-12 flex-[1.4] rounded-xl sm:h-10 sm:flex-1"
+            className="h-11 flex-[1.5]"
             onClick={() => void saveRoutine()}
-            disabled={saving || !formDirty}
+            disabled={saving || !formDirty || !currentEngine}
           >
-            <Save className="h-4 w-4" />
+            <Save />
             {saving ? "Saving…" : formDirty ? "Save" : "Saved"}
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        title="Discard unsaved changes?"
+        description="Your edits to this routine will be lost."
+        confirmLabel="Discard"
+        destructive
+        onConfirm={leaveEditor}
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete this routine?"
+        description={
+          editing && view.kind === "edit"
+            ? `“${routineTitle(routines[view.index])}” will be removed. Existing listings stay in your history.`
+            : undefined
+        }
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => void deleteRoutine()}
+      />
     </div>
   );
 }
