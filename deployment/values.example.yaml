@@ -1,0 +1,43 @@
+# Copy to deployment/live-values.yaml (gitignored) and edit before deploying:
+#   cp deployment/values.example.yaml deployment/live-values.yaml
+#   helm upgrade --install watcher ./deployment/watcher \
+#     -n watcher --create-namespace -f deployment/live-values.yaml
+#
+# This file is an override file; every unset key falls back to
+# deployment/watcher/values.yaml.
+
+images:
+  # Public Docker Hub namespace populated by .github/workflows/docker-publish.yml
+  registry: "docker.io/imdonix"
+  api: watcher-api
+  scraper: watcher-scraper
+  web: watcher-web
+  # Prefer a release tag or sha-<commit> in production instead of latest
+  tag: "latest"
+  pullPolicy: Always
+
+ingress:
+  enabled: true
+  className: traefik
+  host: watcher.example.com
+  tls:
+    enabled: true
+    # cert-manager / Traefik TLS secret for the host above
+    secretName: watcher-tls
+
+secret:
+  create: true
+  name: watcher
+  # Change these before the first install
+  postgresPassword: "change-me-watcher-db"
+  # Empty = API generates once and stores in settings.api_token
+  apiToken: ""
+  # Generate with: cd apps/api && bunx web-push generate-vapid-keys
+  # Leave empty to disable web push.
+  vapidPublicKey: ""
+  vapidPrivateKey: ""
+  vapidSubject: "mailto:you@example.com"
+
+api:
+  scrapIntervalMinutes: 5
+  notifyHour: 8

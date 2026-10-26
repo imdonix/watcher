@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #
-# Build and push Watcher runtime images to the private registry.
+# Build and push Watcher runtime images to Docker Hub.
+# CI (.github/workflows/docker-publish.yml) is the normal path; this is a
+# local fallback and requires `docker login` first.
 #
 # Usage (from repo root or this directory):
 #   ./deployment/_push.sh            # tag = latest
@@ -8,11 +10,11 @@
 #   TAG=$(git rev-parse --short HEAD) ./deployment/_push.sh
 #
 # Override registry:
-#   REGISTRY=192.168.0.100:32500 ./deployment/_push.sh
+#   REGISTRY=docker.io/imdonix ./deployment/_push.sh
 
 set -euo pipefail
 
-REGISTRY="${REGISTRY:-192.168.0.100:32500}"
+REGISTRY="${REGISTRY:-docker.io/imdonix}"
 TAG="${1:-${TAG:-latest}}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -86,25 +88,15 @@ echo "    -f ./deployment/live-values.yaml \\"
 echo "    --set images.tag=$TAG"
 echo ""
 
-echo "Verifying tags in registry..."
-for REPO in "${PUSHED[@]}"; do
-  echo "Repository: $REGISTRY/$REPO"
-  RESPONSE=$(curl -s -w "\nHTTPSTATUS:%{http_code}" "http://$REGISTRY/v2/$REPO/tags/list" || true)
-  BODY=$(echo "$RESPONSE" | sed -e 's/HTTPSTATUS\:.*//g')
-  STATUS=$(echo "$RESPONSE" | tr -d '\n' | sed -e 's/.*HTTPSTATUS://')
-
-  if [ "$STATUS" = "200" ]; then
-    TAGS=$(echo "$BODY" | jq -r '.tags[]?' 2>/dev/null || true)
-    if [ -n "$TAGS" ]; then
-      echo "   Tags:"
-      echo "$TAGS" | sed 's/^/      • /'
-    else
-      echo "   (no tags listed)"
-    fi
+echo "Verifying pushed tags..."
+for NAME in "${PUSHED[@]}"; do
+  FULL_IMAGE="$REGISTRY/$NAME:$TAG"
+  if docker buildx imagetools inspect "$FULL_IMAGE" >/dev/null 2>&1; then
+    echo "   ✅ $FULL_IMAGE"
   else
-    echo "   Could not list tags (HTTP ${STATUS:-unknown})"
+    echo "   ⚠️  $FULL_IMAGE (could not inspect; check docker login)"
   fi
-  echo ""
 done
 
+echo ""
 echo "Done."

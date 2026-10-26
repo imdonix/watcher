@@ -18,12 +18,12 @@ export function generateApiToken(): string {
 export type ApiTokenSource = "env" | "settings" | "generated" | "unset";
 
 /**
- * Default VAPID pair for Docker / first boot (replace in production).
- * Override with VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY.
+ * No default VAPID keys are shipped — set them in the environment.
+ * Generate with: bunx web-push generate-vapid-keys
+ * Leaving them empty disables web push.
  */
-const DEFAULT_VAPID_PUBLIC =
-  "BBYrfVsKv1tXaJZhF693BxVf6LkrgfaNvA8PmBYPvRhHJ9sQzyOoe6mQses823tHcPhuAd67Cy80vrqgNeJ-KgM";
-const DEFAULT_VAPID_PRIVATE = "Ifk6LEVJHQEKUycZdKJNSgLAjSDFzeQ9T6DQiu4KsGk";
+const DEFAULT_VAPID_PUBLIC = "";
+const DEFAULT_VAPID_PRIVATE = "";
 
 /** Mutable runtime config (apiToken filled after DB resolve). */
 export const env = {

@@ -1,5 +1,5 @@
 images:
-  registry: "192.168.0.100:32500"
+  registry: "docker.io/imdonix"
   api: watcher-api
   scraper: watcher-scraper
   web: watcher-web
@@ -36,9 +36,11 @@ secret:
   postgresPassword: "change-me-watcher-db"
   # Empty = API generates once and stores in settings.api_token
   apiToken: ""
-  vapidPublicKey: "BBYrfVsKv1tXaJZhF693BxVf6LkrgfaNvA8PmBYPvRhHJ9sQzyOoe6mQses823tHcPhuAd67Cy80vrqgNeJ-KgM"
-  vapidPrivateKey: "Ifk6LEVJHQEKUycZdKJNSgLAjSDFzeQ9T6DQiu4KsGk"
-  vapidSubject: "mailto:watcher@donix.dev"
+  # Generate with: cd apps/api && bunx web-push generate-vapid-keys
+  # Leave empty to disable web push.
+  vapidPublicKey: ""
+  vapidPrivateKey: ""
+  vapidSubject: "mailto:you@example.com"
 
 api:
   replicas: 1

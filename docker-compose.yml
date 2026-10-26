@@ -1,5 +1,6 @@
 # Full-stack run. All values are embedded here (no .env files).
-# Images built from docker/*.Dockerfile (monorepo root context).
+# Images are built from docker/*.Dockerfile (monorepo root context) and also
+# published as imdonix/watcher-* on Docker Hub for cluster/Helm deploys.
 
 services:
   db:
@@ -20,6 +21,7 @@ services:
       retries: 10
 
   scraper:
+    image: imdonix/watcher-scraper:latest
     build:
       context: .
       dockerfile: docker/scraper.Dockerfile
@@ -45,6 +47,7 @@ services:
       start_period: 40s
 
   api:
+    image: imdonix/watcher-api:latest
     build:
       context: .
       dockerfile: docker/api.Dockerfile
@@ -62,8 +65,10 @@ services:
       NOTIFY_HOUR: "8"
       CORS_ORIGIN: http://localhost:8080,http://localhost:5173
       SCRAPER_URL: http://scraper:3001
-      VAPID_PUBLIC_KEY: BBYrfVsKv1tXaJZhF693BxVf6LkrgfaNvA8PmBYPvRhHJ9sQzyOoe6mQses823tHcPhuAd67Cy80vrqgNeJ-KgM
-      VAPID_PRIVATE_KEY: Ifk6LEVJHQEKUycZdKJNSgLAjSDFzeQ9T6DQiu4KsGk
+      # Generate with: cd apps/api && bunx web-push generate-vapid-keys
+      # Leave empty to disable web push.
+      VAPID_PUBLIC_KEY: ""
+      VAPID_PRIVATE_KEY: ""
       VAPID_SUBJECT: mailto:watcher@localhost
     ports:
       - "3000:3000"
@@ -81,6 +86,7 @@ services:
       start_period: 20s
 
   web:
+    image: imdonix/watcher-web:latest
     build:
       context: .
       dockerfile: docker/web.Dockerfile

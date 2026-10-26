@@ -28,6 +28,33 @@ docker compose up --build
 - Scraper: http://localhost:3001  
 - **API token**: set `API_TOKEN` in compose, or leave empty — first boot generates one, stores it in `settings` (`api_token`), reuses it on restart. Always printed at end of API boot logs.
 
+## Publishing images (Docker Hub)
+
+`.github/workflows/docker-publish.yml` builds the three production images and pushes them to
+`docker.io/imdonix/watcher-{api,scraper,web}` on pushes to `main`, `v*.*.*` tags,
+or manual dispatch.
+
+| Image | Source |
+|-------|--------|
+| `watcher-api` | `docker/api.Dockerfile` |
+| `watcher-scraper` | `docker/scraper.Dockerfile` |
+| `watcher-web` | `docker/web.Dockerfile` |
+
+Tags: `latest` (main / version tags), branch name, `sha-<short>`, and SemVer on `vX.Y.Z` tags.
+Images are `linux/amd64`; change `platforms` in the workflow for multi-arch builds.
+
+Required repository secret: `DOCKERHUB_TOKEN` (Docker Hub access token with **Read & Write**).
+The Docker Hub namespace is baked in as `imdonix`; change `IMAGE_NAMESPACE` in the workflow to
+use a different account. The first push creates the Docker Hub repositories if they do not exist
+yet.
+
+```bash
+docker pull imdonix/watcher-api:latest
+```
+
+For cluster deploys, copy `deployment/values.example.yaml` to the gitignored
+`deployment/live-values.yaml` and adjust it. See `deployment/README.md`.
+
 ## Local development (Bun)
 
 Config comes from process environment or built-in defaults in each app (same keys as Compose). No `.env` files in the repo.
@@ -107,7 +134,7 @@ Important keys (same names in both places):
 | `DATABASE_URL` | Postgres connection string |
 | `SCRAPER_URL` | API → scraper base URL |
 
-| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push VAPID keys (keep stable) |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push VAPID keys (empty → web push disabled; generate with `cd apps/api && bunx web-push generate-vapid-keys`) |
 | `VAPID_SUBJECT` | e.g. `mailto:you@example.com` |
 | `HEADLESS` | Playwright headless mode |
 
@@ -118,6 +145,13 @@ Important keys (same names in both places):
 3. Scheduled or manual **Notify** sends a Web Push to all subscribed browsers and logs deals  
 
 Requires a **secure context** (HTTPS in production; `localhost` is fine for dev).
+
+VAPID keys are not committed. Generate a pair and set it via environment/Helm values,
+then keep it stable so existing subscriptions stay valid:
+
+```bash
+cd apps/api && bunx web-push generate-vapid-keys
+```
 
 ## API overview
 

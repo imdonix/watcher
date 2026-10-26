@@ -39,3 +39,6 @@ pgdata/
 
 # Generated
 apps/web/dist/
+
+# Local deployment overrides (secrets, hostnames, registry credentials)
+deployment/live-values.yaml
