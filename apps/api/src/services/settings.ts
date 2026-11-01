@@ -21,7 +21,7 @@ export const SCRAP_INTERVAL_MAX = 24 * 60; // 1 day
 
 /** AI evaluation defaults (Ollama-compatible endpoint; cloud by default). */
 export const AI_DEFAULT_BASE_URL = "https://ollama.com";
-export const AI_DEFAULT_MODEL = "gemma4:31b";
+export const AI_DEFAULT_MODEL = "gpt-oss:120b";
 /** Score >= threshold counts as pass. */
 export const AI_DEFAULT_PASS_THRESHOLD = 65;
 

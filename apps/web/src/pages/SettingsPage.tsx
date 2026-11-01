@@ -457,7 +457,7 @@ export function SettingsPage() {
                 >
                   <Input
                     id="ai-model"
-                    placeholder="gemma4:31b"
+                    placeholder="gpt-oss:120b"
                     value={ai.model}
                     onChange={(e) => setAi((a) => ({ ...a, model: e.target.value }))}
                   />
