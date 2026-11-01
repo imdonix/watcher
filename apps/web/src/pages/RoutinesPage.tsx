@@ -616,7 +616,7 @@ export function RoutinesPage() {
   const enabled = form.enabled !== false;
 
   return (
-    <div className="space-y-4 pb-24 lg:pb-0">
+    <div className="space-y-4 pb-[calc(8rem+env(safe-area-inset-bottom))] lg:pb-16">
       <div className="flex items-center justify-between gap-2">
         <Button variant="ghost" size="sm" className="-ml-2" onClick={goList}>
           <ArrowLeft />
