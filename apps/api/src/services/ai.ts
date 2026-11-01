@@ -9,6 +9,8 @@ import {
 import {
   AI_EVALUATION_JOB_SLUG,
   findEngineById,
+  type AiUsageModel,
+  type AiUsageResponse,
   type ListingItemDetails,
 } from "@watcher/shared";
 import { log, logError } from "../lib/time";
@@ -214,6 +216,99 @@ export async function callAiModel(cfg: AiConfig, prompt: string, listing: typeof
   return normalizeVerdict(content, cfg.passThreshold);
 }
 
+const PRODUCT_QUERY_SYSTEM_PROMPT = `You extract a concise product search query for Árukereső.hu, a Hungarian price-comparison site.
+You receive one marketplace listing. Return the product name a shop would use for the exact item.
+
+Respond with JSON only, in exactly this shape:
+{"query": "Brand exact model with important variant"}
+
+Rules:
+- Keep the brand, exact model number/name and important variant (storage, capacity, voltage, size, colour only if part of the model).
+- Remove seller/marketing words, condition, location, price, delivery, warranty and generic noise.
+- Do not translate. Keep the original product language (usually Hungarian or English).
+- If the listing is an accessory (case, cable, charger, battery, spare part), keep the accessory word.
+- If there is no identifiable product, return {"query": ""}.
+- Keep the query under 120 characters.`;
+
+type ProductQueryRow = Pick<
+  typeof listings.$inferSelect,
+  "name" | "details" | "lastPrice" | "engineSlug" | "url"
+>;
+
+/**
+ * Ask the configured AI model for a clean product search query.
+ * Returns null when AI is disabled/unconfigured or the model identifies no product.
+ */
+export async function extractProductQuery(
+  cfg: AiConfig,
+  row: ProductQueryRow,
+): Promise<string | null> {
+  if (!aiConfigured(cfg)) return null;
+
+  const details = (row.details ?? null) as ListingItemDetails | null;
+  const description =
+    typeof details?.description === "string" ? details.description.trim() : "";
+  const attributes =
+    details?.attributes && Object.keys(details.attributes).length > 0
+      ? Object.entries(details.attributes)
+          .slice(0, 12)
+          .map(([k, v]) => `${k}: ${String(v)}`)
+          .join("\n")
+      : "";
+
+  const lines = [
+    "LISTING:",
+    `Title: ${row.name}`,
+    row.lastPrice != null ? `Price: ${row.lastPrice} Ft` : null,
+    `Engine: ${row.engineSlug}`,
+    description ? `Description: ${description.slice(0, 1200)}` : null,
+    attributes ? `Attributes:\n${attributes}` : null,
+  ].filter((l): l is string => l != null && l !== "");
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+
+  const res = await fetch(chatUrl(cfg.baseUrl), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: cfg.model,
+      messages: [
+        { role: "system", content: PRODUCT_QUERY_SYSTEM_PROMPT },
+        { role: "user", content: lines.join("\n") },
+      ],
+      stream: false,
+      format: "json",
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`AI product query failed (HTTP ${res.status}): ${body.slice(0, 200)}`);
+  }
+
+  const data = (await res.json().catch(() => ({}))) as ParsedChatResponse;
+  let content = (data.message?.content ?? "").trim();
+  if (!content) return null;
+
+  const fence = content.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  if (fence) content = fence[1]!.trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+
+  const raw = (parsed as Record<string, unknown>).query;
+  if (typeof raw !== "string") return null;
+  const query = raw.replace(/\s+/g, " ").trim().slice(0, 120);
+  return query || null;
+}
+
 /** Lightweight connectivity check: list models on the configured endpoint. */
 export async function testAiConnection(cfg: AiConfig): Promise<{ ok: boolean; detail: string }> {
   const headers: Record<string, string> = {};
@@ -239,6 +334,143 @@ export async function testAiConnection(cfg: AiConfig): Promise<{ ok: boolean; de
     ok: false,
     detail: `unreachable${lastError ? `: ${lastError.slice(0, 160)}` : ""}`,
   };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function percentOf(part: number | null, total: number | null): number | null {
+  if (part == null || total == null || total <= 0) return null;
+  return Math.round(Math.min(100, Math.max(0, (part / total) * 100)) * 10) / 10;
+}
+
+/**
+ * Fetch Ollama Cloud balance + usage for the configured API key.
+ * Other Ollama-compatible endpoints may not implement these routes; the
+ * response then reports `ok: false` with a short detail instead of failing.
+ */
+export async function fetchAiUsage(
+  cfg: Pick<AiConfig, "baseUrl" | "apiKey">,
+): Promise<AiUsageResponse> {
+  const base = cfg.baseUrl.replace(/\/+$/, "");
+  const fetchedAt = new Date().toISOString();
+  if (!base) return { ok: false, detail: "Base URL is empty", fetchedAt };
+
+  const headers: Record<string, string> = {};
+  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+
+  const [balanceResult, usageResult] = await Promise.allSettled([
+    fetch(`${base}/api/balance`, {
+      headers,
+      signal: AbortSignal.timeout(20_000),
+    }),
+    fetch(`${base}/api/usage?range=30d&group_by=model`, {
+      headers,
+      signal: AbortSignal.timeout(20_000),
+    }),
+  ]);
+
+  const errors: string[] = [];
+  let balance: Record<string, unknown> | null = null;
+  let usage: Record<string, unknown> | null = null;
+
+  if (balanceResult.status === "fulfilled") {
+    const res = balanceResult.value;
+    if (res.ok) {
+      balance = asRecord(await res.json().catch(() => null));
+    } else {
+      errors.push(`balance HTTP ${res.status}`);
+    }
+  } else {
+    errors.push(`balance: ${String(balanceResult.reason).slice(0, 120)}`);
+  }
+
+  if (usageResult.status === "fulfilled") {
+    const res = usageResult.value;
+    if (res.ok) {
+      usage = asRecord(await res.json().catch(() => null));
+    } else {
+      errors.push(`usage HTTP ${res.status}`);
+    }
+  } else {
+    errors.push(`usage: ${String(usageResult.reason).slice(0, 120)}`);
+  }
+
+  const out: AiUsageResponse = {
+    ok: Boolean(balance || usage),
+    fetchedAt,
+  };
+  if (!out.ok) {
+    out.detail = errors.join(" · ") || "Usage is not available for this endpoint";
+    return out;
+  }
+
+  const included = asRecord(balance?.included);
+  if (included) {
+    const includedBalance = asNumber(included.balance_usd);
+    const allowance = asNumber(included.allowance_usd);
+    const period = asRecord(included.period);
+    out.includedBalanceUsd = includedBalance;
+    out.includedAllowanceUsd = allowance;
+    out.remainingPct = percentOf(includedBalance, allowance);
+    out.usedPct =
+      out.remainingPct != null
+        ? Math.round((100 - out.remainingPct) * 10) / 10
+        : null;
+    out.periodFrom = asString(period?.from);
+    out.periodUntil = asString(period?.until);
+
+    const session = asRecord(included.session);
+    const weekly = asRecord(included.weekly);
+    out.sessionRemainingPct = asNumber(session?.remaining_percent);
+    out.sessionResetsAt = asString(session?.resets_at);
+    out.weeklyRemainingPct = asNumber(weekly?.remaining_percent);
+    out.weeklyResetsAt = asString(weekly?.resets_at);
+  }
+
+  out.purchasedBalanceUsd = asNumber(asRecord(balance?.purchased)?.balance_usd);
+
+  const totals = asRecord(usage?.totals);
+  if (totals) {
+    out.usage30d = {
+      requests: asNumber(totals.request_count) ?? 0,
+      usd: asNumber(totals.usage_usd) ?? 0,
+      inputTokens: asNumber(totals.input_tokens) ?? 0,
+      cachedInputTokens: asNumber(totals.cached_input_tokens) ?? 0,
+      outputTokens: asNumber(totals.output_tokens) ?? 0,
+    };
+
+    const groups = Array.isArray(totals.groups) ? totals.groups : [];
+    out.models = groups
+      .map(asRecord)
+      .filter((g): g is Record<string, unknown> => g != null)
+      .map(
+        (g): AiUsageModel => ({
+          model: asString(g.model) ?? "unknown",
+          requests: asNumber(g.request_count) ?? 0,
+          usd: asNumber(g.usage_usd) ?? 0,
+          inputTokens: asNumber(g.input_tokens) ?? 0,
+          outputTokens: asNumber(g.output_tokens) ?? 0,
+        }),
+      )
+      .slice(0, 5);
+  }
+
+  if (errors.length > 0) out.detail = errors.join(" · ");
+  return out;
 }
 
 interface PromptRoutine {

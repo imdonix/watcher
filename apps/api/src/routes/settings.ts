@@ -3,7 +3,7 @@ import type { Database } from "@watcher/db";
 import { env } from "../env";
 import { requireAuth, type AuthEnv } from "../middleware/auth";
 import { applyScrapIntervalMinutes, getSchedulerStatus } from "../services/processor";
-import { loadAiConfig, testAiConnection } from "../services/ai";
+import { loadAiConfig, fetchAiUsage, testAiConnection } from "../services/ai";
 import {
   clampScrapIntervalMinutes,
   SCRAP_INTERVAL_MAX,
@@ -160,6 +160,30 @@ export function settingsRoutes(db: Database) {
     });
     log("API", `AI connection test → ok=${result.ok} (${result.detail})`);
     return c.json({ ...result, model });
+  });
+
+  /** Ollama Cloud balance + 30-day usage for the configured API key. */
+  app.post("/ai-usage", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      aiBaseUrl?: unknown;
+      aiApiKey?: unknown;
+    };
+    const saved = await loadAiConfig(db);
+    const baseUrl =
+      typeof body.aiBaseUrl === "string" && body.aiBaseUrl.trim()
+        ? body.aiBaseUrl.trim().replace(/\/+$/, "")
+        : saved.baseUrl;
+    const apiKey =
+      typeof body.aiApiKey === "string" && body.aiApiKey.trim()
+        ? body.aiApiKey.trim()
+        : saved.apiKey;
+
+    const usage = await fetchAiUsage({ baseUrl, apiKey });
+    log(
+      "API",
+      `AI usage → ok=${usage.ok} used=${usage.usedPct ?? "?"}% ${usage.detail ?? ""}`.trim(),
+    );
+    return c.json(usage);
   });
 
   return app;

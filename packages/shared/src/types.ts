@@ -341,3 +341,40 @@ export interface SystemSettings {
   /** Score >= this counts as pass (0-100, default 65) */
   aiPassThreshold: number;
 }
+
+export interface AiUsageModel {
+  model: string;
+  requests: number;
+  usd: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/** Balance + usage details from an Ollama-compatible endpoint. */
+export interface AiUsageResponse {
+  ok: boolean;
+  /** Human-readable reason when usage is unavailable or partial. */
+  detail?: string;
+  /** Included credit usage for the current period (0–100). */
+  usedPct?: number | null;
+  remainingPct?: number | null;
+  includedBalanceUsd?: number | null;
+  includedAllowanceUsd?: number | null;
+  purchasedBalanceUsd?: number | null;
+  periodFrom?: string | null;
+  periodUntil?: string | null;
+  /** Legacy plan limits (remaining percentages). */
+  sessionRemainingPct?: number | null;
+  sessionResetsAt?: string | null;
+  weeklyRemainingPct?: number | null;
+  weeklyResetsAt?: string | null;
+  usage30d?: {
+    requests: number;
+    usd: number;
+    inputTokens: number;
+    cachedInputTokens: number;
+    outputTokens: number;
+  } | null;
+  models?: AiUsageModel[];
+  fetchedAt?: string;
+}

@@ -8,6 +8,7 @@ import {
   computeDeals,
   loadSightingStatFor,
   loadSightingStats,
+  MarketCheckError,
   refreshMarketCheck,
 } from "../services/deals";
 import { log, logError } from "../lib/time";
@@ -176,6 +177,10 @@ export function itemRoutes(db: Database) {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logError("API", `market check failed for ${id}: ${message}`);
+      if (err instanceof MarketCheckError) {
+        // Expected "no shop price" outcome, not a gateway error.
+        return c.json({ market: null, error: message }, 200);
+      }
       return c.json({ error: message }, 502);
     }
   });

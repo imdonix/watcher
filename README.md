@@ -89,7 +89,7 @@ Web dev server: http://localhost:5173 (proxies `/api` → API).
 - **Listing tracking**: permanent `listings` + `listing_sightings` (price/history) + `listing_events` (first_seen / price_change / missing / reappeared). Missing is only set after a **complete** routine scrape.
 - **Postgres**: `search_routines`, `listings`, `listing_sightings`, `listing_events`, `scrape_runs`, `scrape_routine_results`, `market_prices`, `settings`, …
 - **AI evaluation**: each routine can define a prompt; listings scoring below the pass threshold are automatically hidden from the potential-products feed and never push a notification. Changing the prompt re-opens them for re-evaluation.
-- **Deal check**: all-time-low detection plus an on-demand **Árukereső** shop-price check that compares the listing's resale price with the median of current online shop offers. Results are cached per listing; deal badges and the "Best deals" sort use the shop-price delta.
+- **Deal check**: all-time-low detection plus an on-demand **Árukereső** shop-price check that compares the listing's resale price with the median of current online shop offers. The product search name is extracted by the configured AI model when available (falling back to a cleaned listing title). Results are cached per listing; deal badges and the "Best deals" sort use the shop-price delta.
 
 ## Scraper engines
 

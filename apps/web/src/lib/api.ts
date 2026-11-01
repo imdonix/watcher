@@ -1,4 +1,5 @@
 import type {
+  AiUsageResponse,
   DealMarket,
   EngineMeta,
   ItemView,
@@ -109,10 +110,11 @@ export const api = {
 
   /** Run a fresh Árukereső shop-price check and return the updated listing. */
   refreshMarket(id: string) {
-    return request<{ market: DealMarket; listing: ItemView }>(
-      `/items/${encodeURIComponent(id)}/market`,
-      { method: "POST" },
-    );
+    return request<{
+      market: DealMarket | null;
+      listing?: ItemView;
+      error?: string;
+    }>(`/items/${encodeURIComponent(id)}/market`, { method: "POST" });
   },
 
   /** Set / clear the per-listing price alert threshold (null clears). */
@@ -205,6 +207,14 @@ export const api = {
   /** Connectivity check for the AI endpoint (uses typed or saved config). */
   aiTest(body?: { aiBaseUrl?: string; aiApiKey?: string; aiModel?: string }) {
     return request<{ ok: boolean; detail: string; model: string }>("/settings/ai-test", {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
+    });
+  },
+
+  /** Ollama Cloud balance + 30-day usage for the typed or saved API key. */
+  aiUsage(body?: { aiBaseUrl?: string; aiApiKey?: string }) {
+    return request<AiUsageResponse>("/settings/ai-usage", {
       method: "POST",
       body: JSON.stringify(body ?? {}),
     });

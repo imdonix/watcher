@@ -344,13 +344,19 @@ export function ListingDetailPage() {
     setMarketError(null);
     try {
       const res = await api.refreshMarket(listing.id);
+      if (!res.market) {
+        const message = res.error || "No shop price found on arukereso.hu";
+        setMarketError(message);
+        if (!options?.silent) toast.error(message);
+        return;
+      }
       setData((prev) =>
         prev
           ? {
               ...prev,
               listing: {
                 ...prev.listing,
-                deal: res.listing.deal ?? prev.listing.deal,
+                deal: res.listing?.deal ?? prev.listing.deal,
               },
             }
           : prev,

@@ -6,6 +6,8 @@ import {
   type Database,
 } from "@watcher/db";
 import type { DealMarket, ListingDeal } from "@watcher/shared";
+import { log, logError } from "../lib/time";
+import { extractProductQuery, loadAiConfig } from "./ai";
 import { runShopPrice } from "./scraper-client";
 
 /** Attribute keys that help Árukereső find the exact product. */
@@ -36,7 +38,7 @@ export interface SightingStat {
 
 type ListingRow = Pick<
   typeof listings.$inferSelect,
-  "id" | "name" | "lastPrice" | "details"
+  "id" | "name" | "lastPrice" | "details" | "engineSlug" | "url"
 >;
 
 type MarketQuote = Pick<
@@ -55,6 +57,14 @@ type MarketQuote = Pick<
 interface QuoteLike extends Partial<Omit<MarketQuote, "fetchedAt">> {
   shopPrice: number;
   fetchedAt?: Date | string | null;
+}
+
+/** Expected "no shop price" outcome — not an HTTP/server failure. */
+export class MarketCheckError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MarketCheckError";
+  }
 }
 
 function normalizeText(value: string): string {
@@ -228,17 +238,34 @@ export async function refreshMarketCheck(
     throw new Error("Listing has no price to compare");
   }
 
-  const query = buildMarketQuery(target);
+  const heuristicQuery = buildMarketQuery(target);
+  let query = heuristicQuery;
+
+  // Prefer a clean product name from the configured AI model. Marketplace
+  // titles are full of condition/location noise that hurts Árukereső search.
+  try {
+    const cfg = await loadAiConfig(db);
+    const aiQuery = await extractProductQuery(cfg, target);
+    if (aiQuery) {
+      query = aiQuery;
+      log("Market", `AI query for ${target.id}: "${query}"`);
+    }
+  } catch (err) {
+    logError("Market", `AI product query failed for ${target.id}: ${err}`);
+  }
+
   const result = await runShopPrice({ query });
 
   if (!result.ok || result.price == null || !Number.isFinite(result.price)) {
-    throw new Error(result.error || "No shop price found on arukereso.hu");
+    throw new MarketCheckError(
+      result.error || "No shop price found on arukereso.hu",
+    );
   }
 
   const fetchedAt = new Date();
   const values = {
     listingId: target.id,
-    query,
+    query: result.query || query,
     shopPrice: Math.round(result.price),
     shopPriceLow:
       result.lowest != null && Number.isFinite(result.lowest)

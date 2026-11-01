@@ -279,7 +279,8 @@ const VARIANT_WORDS = new Set([
 function compactQuery(tokens: string[]): string {
   let lastModel = -1;
   for (let i = 0; i < tokens.length; i++) {
-    if (isModelToken(tokens[i]!)) lastModel = i;
+    const token = tokens[i]!;
+    if (isModelToken(token) && !isPartNumberToken(token)) lastModel = i;
   }
   if (lastModel < 0) return tokens.slice(0, 6).join(" ");
 
@@ -291,12 +292,31 @@ function compactQuery(tokens: string[]): string {
   return tokens.slice(0, end + 1).join(" ");
 }
 
+/**
+ * Broad category fallback ("bosch kezi korfuresz") for listings whose exact
+ * model is not sold on Árukereső. Used only when the model queries fail.
+ */
+function productTypeQuery(tokens: string[]): string {
+  if (tokens.length < 2) return "";
+  const brand = tokens[0]!;
+  const typeTokens = tokens
+    .slice(1)
+    .filter((t) => !isModelToken(t) && !isAccessoryToken(t))
+    .slice(-2);
+  if (typeTokens.length === 0) return "";
+  return [brand, ...typeTokens].join(" ");
+}
+
 function buildQueryVariants(query: string, tokens: string[]): string[] {
-  // Accessory searches need the full title ("iPhone 13 tok"), not a compact
-  // product-only query that would drop the accessory word.
-  if (tokens.some((t) => isAccessoryToken(t))) return [query];
+  // If the query itself ends in an accessory word ("iPhone 13 tok"), keep the
+  // full title; the compact form would drop the thing being priced. Battery
+  // adjectives inside tool titles ("akkumulátoros fúrógép") must NOT trigger
+  // this, otherwise compact fallback never runs for those listings.
+  const last = tokens[tokens.length - 1];
+  if (last && isAccessoryToken(last)) return [query];
 
   const compact = compactQuery(tokens);
+  const typeQuery = productTypeQuery(tokens);
   const variants: string[] = [];
   if (compact) variants.push(compact);
   if (compact && compact.toLowerCase() !== query.toLowerCase()) {
@@ -304,11 +324,19 @@ function buildQueryVariants(query: string, tokens: string[]): string[] {
   } else if (!compact) {
     variants.push(query);
   }
+  if (typeQuery && typeQuery.toLowerCase() !== compact.toLowerCase()) {
+    variants.push(typeQuery);
+  }
   return [...new Set(variants)];
 }
 
 function isModelToken(token: string): boolean {
   return /\d/.test(token) && token.length >= 2;
+}
+
+/** Long alphanumeric strings are usually part numbers, not model names. */
+function isPartNumberToken(token: string): boolean {
+  return token.length >= 8 && /\d/.test(token);
 }
 
 /**
@@ -383,8 +411,10 @@ function rankCandidate(
     ![...queryTokenSet].some((t) => ACCESSORY_WORDS.has(t));
 
   // Accessories (cases, cables, ear pads, …) are not the product being priced —
-  // unless the query itself is looking for an accessory.
-  const queryWantsAccessory = queryTokens.some((t) => isAccessoryToken(t));
+  // unless the query itself is looking for an accessory (usually the last noun,
+  // e.g. "iPhone 13 tok"). Battery adjectives in tool titles are ignored here.
+  const queryLast = queryTokens[queryTokens.length - 1];
+  const queryWantsAccessory = queryLast != null && isAccessoryToken(queryLast);
   if (!queryWantsAccessory && (accessoryUrl || accessory.length > 0)) return null;
 
   const base = overlap.length / Math.max(queryTokens.length, 1);
