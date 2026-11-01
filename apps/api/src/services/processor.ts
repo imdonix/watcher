@@ -12,7 +12,6 @@ import { runScrapeJob } from "./scraper-client";
 import { notifyAfterScrape } from "./notify";
 import { ingestRoutineScrape } from "./listing-ingest";
 import { runItemDetailsJob } from "./item-details";
-import { runItemVerificationJob } from "./item-verification";
 import { runAiEvaluateJob } from "./ai";
 import { runMarketCheckJob } from "./market-check";
 
@@ -404,56 +403,6 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
         "Scrap",
         `/${engine.name}->${String(config.keywords ?? "")}/ seen=${ingest.itemsSeen} complete=${ingest.complete}`,
       );
-    }
-
-    // Special job: verify listings that disappeared from a routine's results.
-    // 404/410 → permanently deleted; a live page stays missing.
-    try {
-      setProgress({
-        phase: "verify",
-        message: "Verifying listings that disappeared from search…",
-        runId: run.id,
-        routinesTotal: allRoutines.length,
-        listingsSeen: totalSeen,
-        detailsIndex: null,
-        detailsTotal: null,
-      });
-
-      const verifyJob = await runItemVerificationJob(
-        db,
-        run.id,
-        allRoutines.map((routine) => routine.id),
-        (info) => {
-          const shortName =
-            info.name.length > 48 ? `${info.name.slice(0, 45)}…` : info.name;
-          setProgress({
-            phase: "verify",
-            message: `Verify ${info.index}/${info.total}: ${shortName}`,
-            runId: run.id,
-            listingsSeen: totalSeen,
-            detailsIndex: info.index,
-            detailsTotal: info.total,
-            engineSlug: info.engineSlug,
-            engineName: info.engineSlug,
-            routineLabel: shortName,
-          });
-        },
-      );
-      if (verifyJob.planned > 0) {
-        setProgress({
-          phase: "verify",
-          message: `Verification finished: ${verifyJob.exists} still online, ${verifyJob.deleted} deleted, ${verifyJob.failed} failed`,
-          detailsIndex: verifyJob.planned,
-          detailsTotal: verifyJob.planned,
-          listingsSeen: totalSeen,
-        });
-      }
-      log(
-        "Processor",
-        `verification job planned=${verifyJob.planned} exists=${verifyJob.exists} deleted=${verifyJob.deleted} failed=${verifyJob.failed}`,
-      );
-    } catch (err) {
-      logError("Processor", `verification job failed: ${err}`);
     }
 
     // Special job: one-time item-page scrapes for listings missing details

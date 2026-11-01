@@ -46,7 +46,7 @@ export const listings = pgTable("listings", {
   url: text("url").notNull(),
   name: text("name").notNull(),
   imageUrl: text("image_url"),
-  /** active = last complete scrape still saw it; missing = absent after a complete scrape */
+  /** active = last complete scrape still saw it; deleted = absent after a complete scrape */
   status: varchar("status", { length: 16 }).notNull().default("active"),
   /**
    * Hidden from the potential-products feed. Set by the user, or automatically
@@ -72,9 +72,7 @@ export const listings = pgTable("listings", {
   details: jsonb("details").$type<Record<string, unknown> | null>(),
   /** Set after a completed detail attempt (success or fail) — never re-scraped. */
   detailsScrapedAt: timestamp("details_scraped_at", { withTimezone: true }),
-  /** Last time a missing listing was verified via its item page. */
-  lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
-  /** Set when the item page returned 404/410; never verified again. */
+  /** Set when the item was no longer found in a complete routine scrape. */
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   /**
    * AI evaluation verdict: pass | fail (null = not evaluated) — derived from
@@ -114,7 +112,7 @@ export const listingSightings = pgTable("listing_sightings", {
 });
 
 /**
- * Domain events: first_seen | price_change | missing | reappeared
+ * Domain events: first_seen | price_change | reappeared | deleted
  */
 export const listingEvents = pgTable("listing_events", {
   id: serial("id").primaryKey(),
@@ -163,7 +161,7 @@ export const marketPrices = pgTable("market_prices", {
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
-/** Per-routine outcome inside a scrape run (drives missing-item safety). */
+/** Per-routine outcome inside a scrape run (drives deletion safety). */
 export const scrapeRoutineResults = pgTable("scrape_routine_results", {
   id: serial("id").primaryKey(),
   scrapeRunId: integer("scrape_run_id")

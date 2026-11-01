@@ -12,7 +12,6 @@ import type { ScrapeRunJob, StatusResponse } from "@watcher/shared";
 import {
   AI_EVALUATION_JOB_SLUG,
   ITEM_DETAILS_JOB_SLUG,
-  ITEM_VERIFICATION_JOB_SLUG,
   MARKET_CHECK_JOB_SLUG,
 } from "@watcher/shared";
 import { api } from "@/lib/api";
@@ -39,7 +38,6 @@ const POLL_ACTIVE_MS = 2_000;
 
 function jobName(job: ScrapeRunJob): string {
   if (job.engineSlug === ITEM_DETAILS_JOB_SLUG) return "Item details";
-  if (job.engineSlug === ITEM_VERIFICATION_JOB_SLUG) return "Verify missing";
   if (job.engineSlug === AI_EVALUATION_JOB_SLUG) return "AI evaluation";
   if (job.engineSlug === MARKET_CHECK_JOB_SLUG) return "Market check";
   return job.engineSlug;
@@ -47,7 +45,6 @@ function jobName(job: ScrapeRunJob): string {
 
 function jobUnit(job: ScrapeRunJob): string {
   if (job.engineSlug === ITEM_DETAILS_JOB_SLUG) return "scraped";
-  if (job.engineSlug === ITEM_VERIFICATION_JOB_SLUG) return "verified";
   if (job.engineSlug === AI_EVALUATION_JOB_SLUG) return "evaluated";
   if (job.engineSlug === MARKET_CHECK_JOB_SLUG) return "checked";
   return "listings";
@@ -56,7 +53,6 @@ function jobUnit(job: ScrapeRunJob): string {
 function isSystemJob(job: ScrapeRunJob): boolean {
   return (
     job.engineSlug === ITEM_DETAILS_JOB_SLUG ||
-    job.engineSlug === ITEM_VERIFICATION_JOB_SLUG ||
     job.engineSlug === AI_EVALUATION_JOB_SLUG ||
     job.engineSlug === MARKET_CHECK_JOB_SLUG
   );
@@ -281,20 +277,17 @@ export function StatusPage() {
                     Routine {progress.routineIndex}/{progress.routinesTotal}
                   </span>
                 )}
-              {(progress?.phase === "verify" ||
-                progress?.phase === "details" ||
+              {(progress?.phase === "details" ||
                 progress?.phase === "ai" ||
                 progress?.phase === "market") &&
                 progress.detailsTotal != null &&
                 progress.detailsTotal > 0 && (
                   <span>
-                    {progress.phase === "verify"
-                      ? "Verify"
-                      : progress.phase === "details"
-                        ? "Details"
-                        : progress.phase === "ai"
-                          ? "AI"
-                          : "Market"}{" "}
+                    {progress.phase === "details"
+                      ? "Details"
+                      : progress.phase === "ai"
+                        ? "AI"
+                        : "Market"}{" "}
                     {progress.detailsIndex ?? 0}/{progress.detailsTotal}
                   </span>
                 )}
@@ -305,8 +298,7 @@ export function StatusPage() {
                 </span>
               )}
               {progress?.routineLabel &&
-                (progress.phase === "verify" ||
-                  progress.phase === "details" ||
+                (progress.phase === "details" ||
                   progress.phase === "ai" ||
                   progress.phase === "market") && (
                   <span className="truncate">{progress.routineLabel}</span>

@@ -14,7 +14,6 @@ export function listingStateOf(item: StateFields): ListingState {
   if (item.notInterested) {
     return item.notInterestedReason === "ai" ? "ruled_out" : "not_interested";
   }
-  if (item.status === "missing") return "missing";
   return "interesting";
 }
 
@@ -22,8 +21,6 @@ export function listingStateLabel(state: ListingState): string {
   switch (state) {
     case "deleted":
       return "Deleted";
-    case "missing":
-      return "Missing from search";
     case "not_interested":
       return "Not interested";
     case "ruled_out":

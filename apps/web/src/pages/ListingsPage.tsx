@@ -75,7 +75,7 @@ const SWIPE_MAX_PX = 140;
 /** Ignore the synthetic click that follows a swipe. */
 const SWIPE_CLICK_GUARD_MS = 450;
 
-type ListView = "interesting" | "hidden" | "missing" | "deleted";
+type ListView = "interesting" | "hidden" | "deleted";
 
 export function ListingsPage() {
   const navigate = useNavigate();
@@ -146,23 +146,12 @@ export function ListingsPage() {
       }),
     [items],
   );
-  const missing = useMemo(
-    () => items.filter((i) => listingStateOf(i) === "missing"),
-    [items],
-  );
   const deleted = useMemo(
     () => items.filter((i) => listingStateOf(i) === "deleted"),
     [items],
   );
 
-  const source =
-    view === "hidden"
-      ? hidden
-      : view === "missing"
-        ? missing
-        : view === "deleted"
-          ? deleted
-          : interesting;
+  const source = view === "hidden" ? hidden : view === "deleted" ? deleted : interesting;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -391,7 +380,7 @@ export function ListingsPage() {
           notInterestedAt: null,
           notInterestedReason: null,
           available: item.status === "active",
-          state: item.status === "active" ? "interesting" : "missing",
+          state: "interesting",
         },
         started,
       );
@@ -428,11 +417,9 @@ export function ListingsPage() {
   const viewNoun =
     view === "hidden"
       ? "hidden listings"
-      : view === "missing"
-        ? "missing listings"
-        : view === "deleted"
-          ? "deleted listings"
-          : "interesting listings";
+      : view === "deleted"
+        ? "deleted listings"
+        : "interesting listings";
 
   const emptyState = filtered ? (
     <EmptyState
@@ -456,22 +443,11 @@ export function ListingsPage() {
         </Button>
       }
     />
-  ) : view === "missing" ? (
-    <EmptyState
-      icon={<Search className="size-5" />}
-      title="Nothing missing"
-      description="Items that disappear from a routine's results are verified here. Items still online stay here; HTTP 404s move to Deleted."
-      action={
-        <Button variant="outline" size="sm" onClick={() => switchView("interesting")}>
-          Back to interesting
-        </Button>
-      }
-    />
   ) : view === "deleted" ? (
     <EmptyState
       icon={<Trash2 className="size-5" />}
       title="No deleted listings"
-      description="Items verified as HTTP 404/410 are kept here permanently. They are never scraped again."
+      description="Items that disappear from a complete routine scrape are kept here permanently. They are never scraped again."
       action={
         <Button variant="outline" size="sm" onClick={() => switchView("interesting")}>
           Back to interesting
@@ -498,20 +474,16 @@ export function ListingsPage() {
         title={
           view === "hidden"
             ? "Hidden listings"
-            : view === "missing"
-              ? "Missing from search"
-              : view === "deleted"
-                ? "Deleted listings"
-                : "Listings"
+            : view === "deleted"
+              ? "Deleted listings"
+              : "Listings"
         }
         description={
           view === "hidden"
             ? `${hidden.length} not interested / ruled out — restore anything the AI got wrong.`
-            : view === "missing"
-              ? `${missing.length} disappeared from a routine and still exist online. Re-verified weekly.`
-              : view === "deleted"
-                ? `${deleted.length} verified as 404/deleted. Never checked again.`
-                : `${interesting.length} interesting listing${interesting.length === 1 ? "" : "s"}, newest first. AI-ruled-out and dismissed items are under Hidden.`
+            : view === "deleted"
+              ? `${deleted.length} disappeared from a complete routine scrape. Never checked again.`
+              : `${interesting.length} interesting listing${interesting.length === 1 ? "" : "s"}, newest first. AI-ruled-out and dismissed items are under Hidden.`
         }
         actions={
           <div className="flex flex-wrap items-center gap-1.5">
@@ -532,15 +504,6 @@ export function ListingsPage() {
               <EyeOff />
               Hidden
               <span className="tabular-nums opacity-70">{hidden.length}</span>
-            </Button>
-            <Button
-              variant={view === "missing" ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => switchView("missing")}
-            >
-              <Search />
-              Missing
-              <span className="tabular-nums opacity-70">{missing.length}</span>
             </Button>
             <Button
               variant={view === "deleted" ? "secondary" : "ghost"}
@@ -709,9 +672,6 @@ export function ListingsPage() {
                             Deleted
                           </Badge>
                         )}
-                        {itemState === "missing" && (
-                          <Badge variant="warning">Missing from search</Badge>
-                        )}
                         {itemState === "not_interested" && (
                           <Badge variant="secondary">Not interested</Badge>
                         )}
@@ -847,7 +807,7 @@ export function ListingsPage() {
                                   <RotateCcw />
                                   Restore
                                 </DropdownMenuItem>
-                              ) : itemState === "interesting" ? (
+                              ) : (
                                 <DropdownMenuItem
                                   destructive
                                   disabled={busyId === item.id}
@@ -855,11 +815,6 @@ export function ListingsPage() {
                                 >
                                   <Ban />
                                   Not interested
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem disabled>
-                                  <Search />
-                                  Missing from search
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuContent>

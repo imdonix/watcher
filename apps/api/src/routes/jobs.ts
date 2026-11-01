@@ -16,7 +16,6 @@ import {
   AI_EVALUATION_JOB_SLUG,
   ENGINES,
   ITEM_DETAILS_JOB_SLUG,
-  ITEM_VERIFICATION_JOB_SLUG,
   MARKET_CHECK_JOB_SLUG,
 } from "@watcher/shared";
 
@@ -52,7 +51,6 @@ function jobDisplayLabel(
   config: Record<string, unknown> | null | undefined,
 ): string | null {
   if (engineSlug === ITEM_DETAILS_JOB_SLUG) return "Item detail pages";
-  if (engineSlug === ITEM_VERIFICATION_JOB_SLUG) return "Verify missing listings";
   if (engineSlug === AI_EVALUATION_JOB_SLUG) return "AI evaluation";
   if (engineSlug === MARKET_CHECK_JOB_SLUG) return "Market check";
   return routineLabel(config);

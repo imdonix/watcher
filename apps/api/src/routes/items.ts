@@ -21,7 +21,6 @@ function listingState(row: typeof listings.$inferSelect): ListingState {
   if (row.notInterested) {
     return row.notInterestedReason === "ai" ? "ruled_out" : "not_interested";
   }
-  if (row.status === "missing") return "missing";
   return "interesting";
 }
 
@@ -47,7 +46,6 @@ function mapListing(
     available,
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
-    lastVerifiedAt: row.lastVerifiedAt,
     deletedAt: row.deletedAt,
     sightingCount,
     found: row.lastSeenAt,
@@ -72,15 +70,13 @@ export function itemRoutes(db: Database) {
 
   app.get("/", async (c) => {
     const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
-    const filter = c.req.query("status"); // interesting | hidden | missing | deleted | all
+    const filter = c.req.query("status"); // interesting | hidden | deleted | all
     log("API", `Listings list filter=${filter ?? "all"}`);
 
     let rows = await db.select().from(listings).orderBy(desc(listings.lastSeenAt)).limit(limit * 2);
 
     if (filter === "active" || filter === "available" || filter === "interesting") {
       rows = rows.filter((r) => r.status === "active" && !r.notInterested);
-    } else if (filter === "missing") {
-      rows = rows.filter((r) => r.status === "missing" && !r.notInterested);
     } else if (filter === "deleted") {
       rows = rows.filter((r) => r.status === "deleted");
     } else if (
@@ -90,9 +86,7 @@ export function itemRoutes(db: Database) {
     ) {
       rows = rows.filter((r) => r.notInterested && r.status !== "deleted");
     } else if (filter === "unavailable") {
-      rows = rows.filter(
-        (r) => r.status === "missing" || r.status === "deleted" || r.notInterested,
-      );
+      rows = rows.filter((r) => r.status === "deleted" || r.notInterested);
     }
 
     rows = rows.slice(0, limit);

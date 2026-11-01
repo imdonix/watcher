@@ -86,8 +86,8 @@ Web dev server: http://localhost:5173 (proxies `/api` → API).
 - **Persisted schedule** (`scheduler_state` table) — restarts do not reset scrape/notify timing
 - **Scheduled scrapes**; **notify after every scrape** (success or failure)
 - **PWA** + **Web Push**
-- **Listing tracking**: permanent `listings` + `listing_sightings` (price/history) + `listing_events` (first_seen / price_change / missing / reappeared). Missing is only set after a **complete** routine scrape.
-- **Existence checks**: disappeared listings are verified from their item page after the routine scrape. HTTP 404/410 marks them **deleted** permanently (never verified again); a live page stays **missing**. UI states: **interesting**, **not interested**, **ruled out**, **missing**, **deleted**.
+- **Listing tracking**: permanent `listings` + `listing_sightings` (price/history) + `listing_events` (first_seen / price_change / deleted / reappeared). Deletion is only set after a **complete** routine scrape.
+- **Existence tracking**: if a listing is absent from a **complete** routine scrape, it is marked **deleted** permanently and never scraped again. Partial scrapes never delete. UI states: **interesting**, **not interested**, **ruled out**, **deleted**.
 - **Postgres**: `search_routines`, `listings`, `listing_sightings`, `listing_events`, `scrape_runs`, `scrape_routine_results`, `market_prices`, `settings`, …
 - **AI evaluation**: each routine can define a prompt; listings scoring below the pass threshold are automatically hidden from the potential-products feed and never push a notification. Changing the prompt re-opens them for re-evaluation.
 - **Deal check**: all-time-low detection plus **Árukereső** shop-price checks that run as part of each scrape (a small batch per run) and can be re-run from the listing page. The product search name is extracted by the configured AI model when available (falling back to a cleaned listing title). Results are cached per listing; deal badges and the "Best deals" sort use the shop-price delta.

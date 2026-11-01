@@ -46,7 +46,7 @@ export interface ScrapeJobResult {
   ok: boolean;
   /**
    * True only when pagination finished without hard page failures.
-   * Incomplete scrapes must NOT mark listings as missing.
+   * Incomplete scrapes must NOT mark listings as deleted.
    */
   complete: boolean;
   pagesPlanned: number;
@@ -94,17 +94,13 @@ export const AI_EVALUATION_JOB_SLUG = "__ai_evaluate__";
 /** Synthetic engine slug for the per-run market check job in scrape_routine_results */
 export const MARKET_CHECK_JOB_SLUG = "__market_check__";
 
-/** Synthetic engine slug for the per-run missing-item verification job */
-export const ITEM_VERIFICATION_JOB_SLUG = "__verify_missing__";
-
-export type ListingStatus = "active" | "missing" | "deleted";
+export type ListingStatus = "active" | "deleted";
 
 /** User-visible lifecycle state derived by the API. */
 export type ListingState =
   | "interesting"
   | "not_interested"
   | "ruled_out"
-  | "missing"
   | "deleted";
 
 /** One shop offer collected from Árukereső. */
@@ -196,9 +192,7 @@ export interface ItemView {
   available?: boolean;
   firstSeenAt?: string;
   lastSeenAt?: string;
-  /** Last missing-item verification attempt */
-  lastVerifiedAt?: string | null;
-  /** Set when the item page returned 404/410 */
+  /** Set when the item disappeared from a complete routine scrape. */
   deletedAt?: string | null;
   sightingCount?: number;
   sent?: boolean;
@@ -264,7 +258,7 @@ export interface ApiError {
 
 /** Live scrape progress while a run is active (null / idle when not scraping). */
 export interface ScrapeProgress {
-  phase: "idle" | "starting" | "routine" | "verify" | "details" | "ai" | "market" | "finishing" | "notify";
+  phase: "idle" | "starting" | "routine" | "details" | "ai" | "market" | "finishing" | "notify";
   /** Human-readable line for the UI banner */
   message: string;
   runId?: number | null;
@@ -345,7 +339,6 @@ export type ListingEventKind =
   | "first_seen"
   | "price_change"
   | "target_hit"
-  | "missing"
   | "reappeared"
   | "deleted";
 

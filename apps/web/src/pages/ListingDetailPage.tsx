@@ -401,9 +401,7 @@ export function ListingDetailPage() {
 
   const listingState = listingStateOf(listing);
   const unavailable =
-    listing.status === "missing" ||
-    listing.status === "deleted" ||
-    Boolean(listing.notInterested);
+    listing.status === "deleted" || Boolean(listing.notInterested);
   const prevPrice = typeof listing.prevPrice === "number" ? listing.prevPrice : null;
   const curPrice = typeof listing.price === "number" ? listing.price : null;
   const priceDropped = prevPrice != null && curPrice != null && prevPrice > curPrice;
@@ -447,7 +445,7 @@ export function ListingDetailPage() {
           Open original
         </a>
       </Button>
-      {listingState !== "deleted" && listingState !== "missing" && (
+      {listingState !== "deleted" && (
         <Button
           variant={listing.notInterested ? "secondary" : "outline"}
           className="h-11 flex-1 sm:h-9 sm:flex-none"
@@ -536,10 +534,6 @@ export function ListingDetailPage() {
                   ) : listingState === "not_interested" ? (
                     <Badge variant="secondary" className="shadow-sm">
                       Not interested
-                    </Badge>
-                  ) : listingState === "missing" ? (
-                    <Badge variant="warning" className="shadow-sm">
-                      Missing from search
                     </Badge>
                   ) : (
                     <Badge variant="success" className="shadow-sm">
@@ -640,9 +634,6 @@ export function ListingDetailPage() {
                     {!listing.detailsScrapedAt && <Badge variant="secondary">Details pending</Badge>}
                     {listingState === "deleted" && (
                       <Badge variant="destructive">Deleted</Badge>
-                    )}
-                    {listingState === "missing" && (
-                      <Badge variant="warning">Missing from search</Badge>
                     )}
                     {listingState === "ruled_out" && (
                       <Badge variant="secondary">Ruled out</Badge>
@@ -948,14 +939,12 @@ export function ListingDetailPage() {
                               variant={
                                 e.kind === "deleted"
                                   ? "destructive"
-                                  : e.kind === "missing"
-                                    ? "warning"
-                                    : e.kind === "price_change"
-                                      ? "info"
-                                      : e.kind === "first_seen" ||
-                                          e.kind === "target_hit"
-                                        ? "success"
-                                        : "secondary"
+                                  : e.kind === "price_change"
+                                    ? "info"
+                                    : e.kind === "first_seen" ||
+                                        e.kind === "target_hit"
+                                      ? "success"
+                                      : "secondary"
                               }
                               className="capitalize"
                             >
@@ -1280,12 +1269,6 @@ export function ListingDetailPage() {
                       : "Pending"
                   }
                 />
-                {listing.lastVerifiedAt && (
-                  <GlanceRow
-                    label="Last verified"
-                    value={formatDateTime(listing.lastVerifiedAt)}
-                  />
-                )}
                 {listing.deletedAt && (
                   <GlanceRow
                     label="Deleted at"
@@ -1296,8 +1279,8 @@ export function ListingDetailPage() {
                 <GlanceRow label="Events" value={data.events.length} />
               </dl>
               <p className="border-t pt-3 text-[11px] leading-relaxed text-muted-foreground">
-                Missing items are verified from their item page. HTTP 404/410 marks
-                them deleted permanently; partial scrapes never mark items gone.
+                Items missing from a complete routine scrape are marked deleted
+                permanently. Partial scrapes never mark items gone.
               </p>
             </CardContent>
           </Card>

@@ -20,7 +20,7 @@ export interface IngestRoutineOutput {
   itemsSeen: number;
   sightingsCreated: number;
   eventsCreated: number;
-  markedMissing: number;
+  markedDeleted: number;
   complete: boolean;
 }
 
@@ -53,7 +53,7 @@ function listingChanged(
  * - Upsert permanent listing rows (always refresh lastSeenAt when observed)
  * - Insert a sighting only on first see or when listing content changed
  * - Emit first_seen / price_change / reappeared events
- * - Only if scrape is complete: mark previously seen active items as missing
+ * - Only if scrape is complete: mark previously seen active items as deleted
  */
 export async function ingestRoutineScrape(
   db: Database,
@@ -63,7 +63,7 @@ export async function ingestRoutineScrape(
   const now = new Date();
   let sightingsCreated = 0;
   let eventsCreated = 0;
-  let markedMissing = 0;
+  let markedDeleted = 0;
 
   const seenIds = new Set<string>();
 
@@ -126,8 +126,7 @@ export async function ingestRoutineScrape(
         lastSeenAt: now,
         updatedAt: now,
         status: "active",
-        // Seen again in a routine result → shell/lifecycle markers are stale.
-        lastVerifiedAt: null,
+        // Seen again in a routine result → the deletion marker is stale.
         deletedAt: null,
       };
 
@@ -154,7 +153,7 @@ export async function ingestRoutineScrape(
         log("Ingest", `listing ${id}: price change cleared not_interested`);
       }
 
-      if (row.status === "missing" || row.status === "deleted") {
+      if (row.status === "deleted") {
         await db.insert(listingEvents).values({
           listingId: id,
           scrapeRunId,
@@ -238,14 +237,14 @@ export async function ingestRoutineScrape(
       for (const { id } of stillActive) {
         await db
           .update(listings)
-          .set({ status: "missing", updatedAt: now })
+          .set({ status: "deleted", deletedAt: now, updatedAt: now })
           .where(eq(listings.id, id));
 
         await db.insert(listingEvents).values({
           listingId: id,
           scrapeRunId,
           searchRoutineId,
-          kind: "missing",
+          kind: "deleted",
           oldPrice: null,
           newPrice: null,
           // Removals must not trigger push
@@ -253,13 +252,13 @@ export async function ingestRoutineScrape(
           createdAt: now,
         });
         eventsCreated++;
-        markedMissing++;
+        markedDeleted++;
       }
     }
   } else if (!result.complete) {
     log(
       "Ingest",
-      `routine ${searchRoutineId}: incomplete scrape (failed pages=${result.pagesFailed}) — skip missing detection`,
+      `routine ${searchRoutineId}: incomplete scrape (failed pages=${result.pagesFailed}) — skip deletion detection`,
     );
   }
 
@@ -277,14 +276,14 @@ export async function ingestRoutineScrape(
 
   log(
     "Ingest",
-    `routine ${searchRoutineId}: seen=${seenIds.size} sightings=${sightingsCreated} events=${eventsCreated} missing=${markedMissing} complete=${result.complete}`,
+    `routine ${searchRoutineId}: seen=${seenIds.size} sightings=${sightingsCreated} events=${eventsCreated} deleted=${markedDeleted} complete=${result.complete}`,
   );
 
   return {
     itemsSeen: seenIds.size,
     sightingsCreated,
     eventsCreated,
-    markedMissing,
+    markedDeleted,
     complete: result.ok && result.complete,
   };
 }
