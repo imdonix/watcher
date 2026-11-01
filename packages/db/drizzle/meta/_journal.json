@@ -71,6 +71,13 @@
       "when": 1793558400000,
       "tag": "0009_market_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793644800000,
+      "tag": "0010_market_check_error",
+      "breakpoints": true
     }
   ]
 }

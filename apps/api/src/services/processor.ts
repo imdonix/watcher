@@ -13,6 +13,7 @@ import { notifyAfterScrape } from "./notify";
 import { ingestRoutineScrape } from "./listing-ingest";
 import { runItemDetailsJob } from "./item-details";
 import { runAiEvaluateJob } from "./ai";
+import { runMarketCheckJob } from "./market-check";
 
 const STATE_ID = 1;
 
@@ -486,6 +487,49 @@ export async function scrapAll(db: Database): Promise<{ found: number; runId: nu
       }
     } catch (err) {
       logError("Processor", `AI evaluation job failed: ${err}`);
+    }
+
+    // Special job: Árukereső market checks (auxiliary — never fails the run)
+    try {
+      setProgress({
+        phase: "market",
+        message: "Running market checks…",
+        runId: run.id,
+        listingsSeen: totalSeen,
+        detailsIndex: null,
+        detailsTotal: null,
+      });
+
+      const marketJob = await runMarketCheckJob(db, run.id, (info) => {
+        const shortName =
+          info.name.length > 48 ? `${info.name.slice(0, 45)}…` : info.name;
+        setProgress({
+          phase: "market",
+          message: `Market check ${info.index}/${info.total}: ${shortName}`,
+          runId: run.id,
+          listingsSeen: totalSeen,
+          detailsIndex: info.index,
+          detailsTotal: info.total,
+          engineSlug: info.engineSlug,
+          engineName: info.engineSlug,
+          routineLabel: shortName,
+        });
+      });
+      if (marketJob.planned > 0) {
+        setProgress({
+          phase: "market",
+          message: `Market checks finished: ${marketJob.checked} priced, ${marketJob.noMatch} no match, ${marketJob.failed} failed`,
+          detailsIndex: marketJob.planned,
+          detailsTotal: marketJob.planned,
+          listingsSeen: totalSeen,
+        });
+      }
+      log(
+        "Processor",
+        `market-check job planned=${marketJob.planned} ok=${marketJob.checked} noMatch=${marketJob.noMatch} failed=${marketJob.failed}`,
+      );
+    } catch (err) {
+      logError("Processor", `market-check job failed: ${err}`);
     }
 
     setProgress({

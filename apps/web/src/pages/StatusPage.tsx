@@ -9,7 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { ScrapeRunJob, StatusResponse } from "@watcher/shared";
-import { AI_EVALUATION_JOB_SLUG, ITEM_DETAILS_JOB_SLUG } from "@watcher/shared";
+import { AI_EVALUATION_JOB_SLUG, ITEM_DETAILS_JOB_SLUG, MARKET_CHECK_JOB_SLUG } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { scrapePercent, scrapePhaseLine } from "@/lib/scrape";
@@ -35,13 +35,23 @@ const POLL_ACTIVE_MS = 2_000;
 function jobName(job: ScrapeRunJob): string {
   if (job.engineSlug === ITEM_DETAILS_JOB_SLUG) return "Item details";
   if (job.engineSlug === AI_EVALUATION_JOB_SLUG) return "AI evaluation";
+  if (job.engineSlug === MARKET_CHECK_JOB_SLUG) return "Market check";
   return job.engineSlug;
 }
 
 function jobUnit(job: ScrapeRunJob): string {
   if (job.engineSlug === ITEM_DETAILS_JOB_SLUG) return "scraped";
   if (job.engineSlug === AI_EVALUATION_JOB_SLUG) return "evaluated";
+  if (job.engineSlug === MARKET_CHECK_JOB_SLUG) return "checked";
   return "listings";
+}
+
+function isSystemJob(job: ScrapeRunJob): boolean {
+  return (
+    job.engineSlug === ITEM_DETAILS_JOB_SLUG ||
+    job.engineSlug === AI_EVALUATION_JOB_SLUG ||
+    job.engineSlug === MARKET_CHECK_JOB_SLUG
+  );
 }
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -263,11 +273,17 @@ export function StatusPage() {
                     Routine {progress.routineIndex}/{progress.routinesTotal}
                   </span>
                 )}
-              {(progress?.phase === "details" || progress?.phase === "ai") &&
+              {(progress?.phase === "details" ||
+                progress?.phase === "ai" ||
+                progress?.phase === "market") &&
                 progress.detailsTotal != null &&
                 progress.detailsTotal > 0 && (
                   <span>
-                    {progress.phase === "details" ? "Details" : "AI"}{" "}
+                    {progress.phase === "details"
+                      ? "Details"
+                      : progress.phase === "ai"
+                        ? "AI"
+                        : "Market"}{" "}
                     {progress.detailsIndex ?? 0}/{progress.detailsTotal}
                   </span>
                 )}
@@ -278,7 +294,9 @@ export function StatusPage() {
                 </span>
               )}
               {progress?.routineLabel &&
-                (progress.phase === "details" || progress.phase === "ai") && (
+                (progress.phase === "details" ||
+                  progress.phase === "ai" ||
+                  progress.phase === "market") && (
                   <span className="truncate">{progress.routineLabel}</span>
                 )}
             </div>
@@ -500,9 +518,7 @@ export function StatusPage() {
                                           </Badge>
                                           <span className="truncate text-xs font-medium">
                                             {jobName(job)}
-                                            {job.label &&
-                                            job.engineSlug !== ITEM_DETAILS_JOB_SLUG &&
-                                            job.engineSlug !== AI_EVALUATION_JOB_SLUG ? (
+                                            {job.label && !isSystemJob(job) ? (
                                               <span className="font-normal text-muted-foreground">
                                                 {" "}
                                                 · {job.label}

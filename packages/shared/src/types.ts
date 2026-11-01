@@ -89,6 +89,9 @@ export const ITEM_DETAILS_JOB_SLUG = "__item_details__";
 /** Synthetic engine slug for the per-run AI evaluation job in scrape_routine_results */
 export const AI_EVALUATION_JOB_SLUG = "__ai_evaluate__";
 
+/** Synthetic engine slug for the per-run market check job in scrape_routine_results */
+export const MARKET_CHECK_JOB_SLUG = "__market_check__";
+
 export type ListingStatus = "active" | "missing";
 
 /** One shop offer collected from Árukereső. */
@@ -242,7 +245,7 @@ export interface ApiError {
 
 /** Live scrape progress while a run is active (null / idle when not scraping). */
 export interface ScrapeProgress {
-  phase: "idle" | "starting" | "routine" | "details" | "ai" | "finishing" | "notify";
+  phase: "idle" | "starting" | "routine" | "details" | "ai" | "market" | "finishing" | "notify";
   /** Human-readable line for the UI banner */
   message: string;
   runId?: number | null;
@@ -254,7 +257,7 @@ export interface ScrapeProgress {
   routineLabel?: string | null;
   /** Listings seen so far in this run (after each routine ingest) */
   listingsSeen?: number | null;
-  /** Item-detail job progress */
+  /** Item-detail / AI / market-check job progress */
   detailsIndex?: number | null;
   detailsTotal?: number | null;
   startedAt?: string | null;

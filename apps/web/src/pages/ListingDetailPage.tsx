@@ -39,8 +39,6 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageLoader } from "@/components/Spinner";
 
-const MARKET_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
-
 function MiniPriceChart({
   points,
 }: {
@@ -157,7 +155,6 @@ export function ListingDetailPage() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showStickyBar, setShowStickyBar] = useState(false);
   const summaryActionsRef = useRef<HTMLDivElement | null>(null);
-  const autoMarketRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -189,30 +186,6 @@ export function ListingDetailPage() {
     setBrokenImages(new Set());
     setMarketError(null);
   }, [listing?.id]);
-
-  // Populate the Market check automatically the first time a listing is opened.
-  // Cached results make later visits instant; the card also has a manual refresh.
-  useEffect(() => {
-    if (!listing || listing.price == null) return;
-    const market = listing.deal?.market;
-    const fresh =
-      market?.fetchedAt != null &&
-      Date.now() - new Date(market.fetchedAt).getTime() < MARKET_FRESH_MS;
-    if (market && fresh) return;
-    // Árukereső compares retail products, not property/car listings.
-    if (
-      listing.engineSlug === "ingatlan.com" ||
-      listing.engineSlug === "hasznaltauto.hu" ||
-      String(listing.url ?? "").includes("ingatlan.jofogas.hu")
-    ) {
-      return;
-    }
-    if (autoMarketRef.current === listing.id) return;
-    autoMarketRef.current = listing.id;
-    void refreshMarket({ silent: true });
-    // refreshMarket is intentionally not a dependency — one attempt per listing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [listing?.id, listing?.price, listing?.deal?.market]);
 
   // Only show the mobile action bar once the inline actions scroll away.
   useEffect(() => {
@@ -300,7 +273,7 @@ export function ListingDetailPage() {
         });
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "AI evaluation failed");
+      toast.error(err instanceof Error ? err.message : "AI check failed");
     } finally {
       setAiBusy(false);
     }
@@ -338,7 +311,7 @@ export function ListingDetailPage() {
     }
   }
 
-  async function refreshMarket(options?: { silent?: boolean }) {
+  async function refreshMarket() {
     if (!listing) return;
     setMarketBusy(true);
     setMarketError(null);
@@ -347,7 +320,7 @@ export function ListingDetailPage() {
       if (!res.market) {
         const message = res.error || "No shop price found on arukereso.hu";
         setMarketError(message);
-        if (!options?.silent) toast.error(message);
+        toast.error(message);
         return;
       }
       setData((prev) =>
@@ -362,20 +335,18 @@ export function ListingDetailPage() {
           : prev,
       );
       const m = res.market;
-      if (!options?.silent) {
-        toast.success(`Shop price ${formatPrice(m.shopPrice)}`, {
-          description:
-            m.deltaPct < 0
-              ? `${Math.abs(m.deltaPct)}% below the Árukereső shop price`
-              : m.deltaPct > 0
-                ? `${m.deltaPct}% above the Árukereső shop price`
-                : "Matches the Árukereső shop price",
-        });
-      }
+      toast.success(`Shop price ${formatPrice(m.shopPrice)}`, {
+        description:
+          m.deltaPct < 0
+            ? `${Math.abs(m.deltaPct)}% below the Árukereső shop price`
+            : m.deltaPct > 0
+              ? `${m.deltaPct}% above the Árukereső shop price`
+              : "Matches the Árukereső shop price",
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Market check failed";
       setMarketError(message);
-      if (!options?.silent) toast.error(message);
+      toast.error(message);
     } finally {
       setMarketBusy(false);
     }
@@ -557,7 +528,7 @@ export function ListingDetailPage() {
                     <Badge
                       variant={score != null ? aiScoreVariant(score, passThreshold) : listing.aiVerdict === "pass" ? "success" : "destructive"}
                       className="pointer-events-auto shadow-sm"
-                      title={listing.aiReason ?? "AI evaluation"}
+                      title={listing.aiReason ?? "AI check"}
                     >
                       <Sparkles className="size-3" />
                       {score != null ? `${score}/100` : listing.aiVerdict}
@@ -743,9 +714,8 @@ export function ListingDetailPage() {
 
           {/* Tabs */}
           <Tabs defaultValue="details" className="gap-3">
-            <TabsList className="grid h-10 w-full grid-cols-4">
+            <TabsList className="grid h-10 w-full grid-cols-3">
               <TabsTrigger value="details">Details</TabsTrigger>
-              <TabsTrigger value="ai">AI</TabsTrigger>
               <TabsTrigger value="history">
                 History
                 <span className="hidden tabular-nums text-muted-foreground sm:inline">
@@ -861,65 +831,6 @@ export function ListingDetailPage() {
                       </p>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="ai">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex flex-wrap items-center gap-2 text-base">
-                    <Sparkles className="size-4 text-muted-foreground" />
-                    AI evaluation
-                    {score != null ? (
-                      <Badge variant={aiScoreVariant(score, passThreshold)}>{score}/100</Badge>
-                    ) : listing.aiVerdict ? (
-                      <Badge variant={listing.aiVerdict === "pass" ? "success" : "destructive"}>
-                        {listing.aiVerdict}
-                      </Badge>
-                    ) : null}
-                  </CardTitle>
-                  <CardDescription>
-                    {listing.aiEvaluatedAt
-                      ? `${listing.aiModel ? `${listing.aiModel} · ` : ""}evaluated ${formatRelative(listing.aiEvaluatedAt)} · pass at ≥ ${passThreshold}`
-                      : "Not evaluated yet — add an evaluation prompt to the routine and an API key in Settings."}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {score != null && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Match score</span>
-                        <span className="font-medium tabular-nums">{score}/100</span>
-                      </div>
-                      <Progress value={score} className="h-2" />
-                    </div>
-                  )}
-                  {listing.aiReason ? (
-                    <p className="rounded-lg bg-muted/50 px-3.5 py-3 text-sm leading-relaxed text-foreground">
-                      {listing.aiReason}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {hasEvaluation
-                        ? "No reasoning was stored for this evaluation."
-                        : "Run an evaluation to score this listing against the routine prompt."}
-                    </p>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full sm:w-auto"
-                    disabled={aiBusy}
-                    onClick={() => void reevaluate()}
-                  >
-                    <Sparkles className={cn(aiBusy && "animate-pulse")} />
-                    {aiBusy
-                      ? "Evaluating…"
-                      : hasEvaluation
-                        ? "Re-evaluate with AI"
-                        : "Evaluate with AI"}
-                  </Button>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -1046,13 +957,78 @@ export function ListingDetailPage() {
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-6 lg:self-start">
           <Card>
             <CardHeader>
+              <CardTitle className="flex flex-wrap items-center gap-2 text-base">
+                <Sparkles className="size-4 text-muted-foreground" />
+                AI check
+                {score != null ? (
+                  <Badge variant={aiScoreVariant(score, passThreshold)}>
+                    {score}/100
+                  </Badge>
+                ) : listing.aiVerdict ? (
+                  <Badge
+                    variant={
+                      listing.aiVerdict === "pass" ? "success" : "destructive"
+                    }
+                  >
+                    {listing.aiVerdict}
+                  </Badge>
+                ) : null}
+              </CardTitle>
+              <CardDescription>
+                {listing.aiEvaluatedAt
+                  ? `${listing.aiModel ? `${listing.aiModel} · ` : ""}checked ${formatRelative(
+                      listing.aiEvaluatedAt,
+                    )} · pass at ≥ ${passThreshold}`
+                  : "Runs automatically after each scrape. Add an evaluation prompt to the routine and an API key in Settings."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {score != null && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Match score</span>
+                    <span className="font-medium tabular-nums">{score}/100</span>
+                  </div>
+                  <Progress value={score} className="h-2" />
+                </div>
+              )}
+              {listing.aiReason ? (
+                <p className="rounded-lg bg-muted/50 px-3.5 py-3 text-sm leading-relaxed text-foreground">
+                  {listing.aiReason}
+                </p>
+              ) : (
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {hasEvaluation
+                    ? "No reasoning was stored for this check."
+                    : "No AI check yet. It runs with each scrape; you can run one now."}
+                </p>
+              )}
+              <Button
+                variant={hasEvaluation ? "outline" : "default"}
+                size="sm"
+                className="w-full"
+                disabled={aiBusy}
+                onClick={() => void reevaluate()}
+              >
+                <Sparkles className={cn(aiBusy && "animate-pulse")} />
+                {aiBusy
+                  ? "Checking…"
+                  : hasEvaluation
+                    ? "Re-run AI check"
+                    : "Run AI check"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Scale className="size-4 text-muted-foreground" />
                 Market check
               </CardTitle>
               <CardDescription>
                 Estimated online shop price from Árukereső versus this listing's
-                resale price.
+                resale price. Runs with each scrape; re-check any time.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -1144,7 +1120,7 @@ export function ListingDetailPage() {
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   {marketError
                     ? `Could not find a shop price: ${marketError}`
-                    : "No shop price check yet. Run one to compare this resale price with current online shop offers on Árukereső."}
+                    : "No shop price yet. Market checks run with each scrape; you can run one now."}
                 </p>
               )}
 
@@ -1159,7 +1135,7 @@ export function ListingDetailPage() {
                 {marketBusy
                   ? "Checking Árukereső…"
                   : listing.deal?.market
-                    ? "Refresh shop price"
+                    ? "Re-check shop price"
                     : "Check shop price"}
               </Button>
               {listing.deal?.market?.fetchedAt && (

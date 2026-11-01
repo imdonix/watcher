@@ -217,7 +217,7 @@ export async function computeDeals(
   for (const target of targets) {
     const deal = emptyDeal(target, stats.get(target.id));
     const quote = quotes.get(target.id);
-    if (quote && target.lastPrice != null && target.lastPrice > 0) {
+    if (quote && quote.shopPrice > 0 && target.lastPrice != null && target.lastPrice > 0) {
       deal.market = marketFromQuote(target.lastPrice, quote);
     }
     out.set(target.id, deal);
@@ -281,6 +281,8 @@ export async function refreshMarketCheck(
     productName: result.productName,
     productUrl: result.productUrl,
     offers: result.offers as unknown as Array<Record<string, unknown>>,
+    error: null,
+    lastCheckedAt: fetchedAt,
     fetchedAt,
   };
 
@@ -300,9 +302,54 @@ export async function refreshMarketCheck(
         productName: values.productName,
         productUrl: values.productUrl,
         offers: values.offers,
+        error: null,
+        lastCheckedAt: values.lastCheckedAt,
         fetchedAt: values.fetchedAt,
       },
     });
 
   return marketFromQuote(target.lastPrice, values);
+}
+
+/**
+ * Record an expected no-match so the scrape job does not retry the same
+ * listing every run. Keeps the last successful price when one exists.
+ */
+export async function recordMarketCheckFailure(
+  db: Database,
+  target: ListingRow,
+  message: string,
+): Promise<void> {
+  const now = new Date();
+  const error = message.replace(/\s+/g, " ").trim().slice(0, 500);
+  const [existing] = await db
+    .select({ listingId: marketPrices.listingId })
+    .from(marketPrices)
+    .where(eq(marketPrices.listingId, target.id))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(marketPrices)
+      .set({ error, lastCheckedAt: now })
+      .where(eq(marketPrices.listingId, target.id));
+    return;
+  }
+
+  await db.insert(marketPrices).values({
+    listingId: target.id,
+    query: buildMarketQuery(target),
+    shopPrice: 0,
+    shopPriceLow: null,
+    shopPriceHigh: null,
+    sampleSize: 0,
+    confidence: "similar",
+    matchedTokens: [],
+    productName: null,
+    productUrl: null,
+    offers: [],
+    error,
+    lastCheckedAt: now,
+    fetchedAt: now,
+  });
 }

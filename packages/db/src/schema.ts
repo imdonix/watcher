@@ -152,6 +152,10 @@ export const marketPrices = pgTable("market_prices", {
   productUrl: text("product_url"),
   /** Raw offers used for the estimate (store, price, name, url). */
   offers: jsonb("offers").$type<Array<Record<string, unknown>>>().notNull().default([]),
+  /** Last failure reason when no shop price was found; cleared on success. */
+  error: text("error"),
+  /** Last attempted check (success or no-match); drives the scrape batch. */
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
   fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

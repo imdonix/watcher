@@ -16,6 +16,10 @@ export function scrapePhaseLine(p: ScrapeProgress | null): string {
       return p.detailsTotal != null && p.detailsTotal > 0
         ? `AI ${p.detailsIndex ?? 0}/${p.detailsTotal}`
         : "AI evaluation…";
+    case "market":
+      return p.detailsTotal != null && p.detailsTotal > 0
+        ? `Market ${p.detailsIndex ?? 0}/${p.detailsTotal}`
+        : "Market check…";
     case "finishing":
       return "Finishing up";
     case "notify":
@@ -31,7 +35,8 @@ export function scrapePhaseLine(p: ScrapeProgress | null): string {
 export function scrapePhaseSub(p: ScrapeProgress | null): string {
   if (!p) return "Scrape requested";
   if (p.phase === "routine") return p.engineName ?? p.message;
-  if (p.phase === "details" || p.phase === "ai") return p.routineLabel ?? p.message;
+  if (p.phase === "details" || p.phase === "ai" || p.phase === "market")
+    return p.routineLabel ?? p.message;
   return p.message;
 }
 
@@ -42,7 +47,7 @@ export function scrapePercent(p: ScrapeProgress | null): number | null {
     return Math.min(100, Math.round((p.routineIndex / p.routinesTotal) * 100));
   }
   if (
-    (p.phase === "details" || p.phase === "ai") &&
+    (p.phase === "details" || p.phase === "ai" || p.phase === "market") &&
     p.detailsIndex != null &&
     p.detailsTotal
   ) {
