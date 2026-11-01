@@ -53,7 +53,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { scrapePercent, scrapePhaseLine, scrapePhaseSub } from "@/lib/scrape";
-import { readNewCount, subscribeNewCount } from "@/lib/inbox";
 import { PUSH_STATE_EVENT } from "@/lib/push-events";
 
 const primaryNav = [
@@ -252,9 +251,6 @@ export function AppLayout() {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushOn, setPushOn] = useState(false);
   const [scraperUp, setScraperUp] = useState<boolean | null>(null);
-  const [inboxCount, setInboxCount] = useState(readNewCount);
-
-  useEffect(() => subscribeNewCount(setInboxCount), []);
 
   const pushSupported = isPushSupported();
 
@@ -386,7 +382,6 @@ export function AppLayout() {
                 to={to}
                 label={label}
                 icon={icon}
-                badge={to === "/listings" ? inboxCount : 0}
                 active={match.test(activePath)}
               />
             ))}
@@ -526,7 +521,6 @@ export function AppLayout() {
                         to={to}
                         label={label}
                         icon={icon}
-                        badge={to === "/listings" ? inboxCount : 0}
                         active={match.test(activePath)}
                         onClick={() => setMenuOpen(false)}
                       />
@@ -620,11 +614,6 @@ export function AppLayout() {
                 )}
                 <span className="relative">
                   <Icon className={cn("size-[1.15rem]", active && "stroke-[2.4px]")} />
-                  {to === "/listings" && inboxCount > 0 && (
-                    <span className="absolute -right-2.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-4 text-primary-foreground">
-                      {inboxCount > 9 ? "9+" : inboxCount}
-                    </span>
-                  )}
                 </span>
                 {label}
               </NavLink>

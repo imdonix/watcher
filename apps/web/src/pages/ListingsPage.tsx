@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowDownWideNarrow,
@@ -7,7 +15,6 @@ import {
   ExternalLink,
   EyeOff,
   Image as ImageIcon,
-  Inbox,
   LayoutList,
   MoreHorizontal,
   RefreshCw,
@@ -24,7 +31,6 @@ import { formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { aiScoreVariant } from "@/lib/ai";
 import { formatEngine, formatRelative } from "@/lib/format";
-import { publishNewCount, readLastSeenAt, writeLastSeenAt } from "@/lib/inbox";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,12 +53,6 @@ function priceLabel(item: ItemView): string {
   return formatPrice(item.price as number | string | null);
 }
 
-function isNewSince(item: ItemView, since: number | null): boolean {
-  if (since == null) return false;
-  const t = new Date(String(item.firstSeenAt)).getTime();
-  return Number.isFinite(t) && t > since;
-}
-
 /** Lower is a better deal. Items without a signal sort last. */
 function dealRank(item: ItemView): number {
   const deal = item.deal;
@@ -68,22 +68,37 @@ function hasDealSignal(item: ItemView): boolean {
   return Boolean(item.deal && (item.deal.market || item.deal.allTimeLow));
 }
 
+/** Swipe distance before release that dismisses a row. */
+const SWIPE_DISMISS_PX = 88;
+const SWIPE_MAX_PX = 140;
+/** Ignore the synthetic click that follows a swipe. */
+const SWIPE_CLICK_GUARD_MS = 450;
+
 export function ListingsPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ItemView[]>([]);
   const [query, setQuery] = useState("");
   const [showHidden, setShowHidden] = useState(false);
-  const [onlyNew, setOnlyNew] = useState(false);
   const [bestDeals, setBestDeals] = useState(false);
-  const [lastSeenAt, setLastSeenAt] = useState<number | null>(readLastSeenAt);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [exiting, setExiting] = useState<Set<string>>(new Set());
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [passThreshold, setPassThreshold] = useState(65);
+  const [swipe, setSwipe] = useState<{ id: string; x: number } | null>(null);
   /** Pending per-row exit-animation timers (id → timeout handle). */
   const flipTimers = useRef(new Map<string, number>());
+  const swipeRef = useRef<{
+    id: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    x: number;
+    engaged: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef<string | null>(null);
+  const clickGuardTimer = useRef<number | null>(null);
 
   const load = useCallback(async (opts?: { soft?: boolean }) => {
     if (opts?.soft) setRefreshing(true);
@@ -106,18 +121,11 @@ export function ListingsPage() {
     void load();
   }, [load]);
 
-  // First visit after installing the feature: start counting from now.
-  useEffect(() => {
-    if (lastSeenAt != null) return;
-    const now = Date.now();
-    writeLastSeenAt(now);
-    setLastSeenAt(now);
-  }, [lastSeenAt]);
-
   useEffect(
     () => () => {
       for (const t of flipTimers.current.values()) window.clearTimeout(t);
       flipTimers.current.clear();
+      if (clickGuardTimer.current != null) window.clearTimeout(clickGuardTimer.current);
     },
     [],
   );
@@ -130,25 +138,15 @@ export function ListingsPage() {
   const hidden = useMemo(() => items.filter((i) => i.notInterested), [items]);
   const source = showHidden ? hidden : active;
 
-  const newCount = useMemo(
-    () => active.filter((item) => isNewSince(item, lastSeenAt)).length,
-    [active, lastSeenAt],
-  );
-
-  const rows =
-    onlyNew && !showHidden
-      ? source.filter((item) => isNewSince(item, lastSeenAt))
-      : source;
-
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     const matching = q
-      ? rows.filter(
+      ? source.filter(
           (i) =>
             String(i.name).toLowerCase().includes(q) ||
             String(i.engineSlug ?? "").toLowerCase().includes(q),
         )
-      : rows;
+      : source;
     return [...matching].sort((a, b) => {
       if (bestDeals) {
         const rankA = dealRank(a);
@@ -160,28 +158,9 @@ export function ListingsPage() {
         new Date(String(a.firstSeenAt)).getTime()
       );
     });
-  }, [rows, query, bestDeals]);
+  }, [source, query, bestDeals]);
 
   const dealSignals = useMemo(() => active.filter(hasDealSignal).length, [active]);
-
-  // Keep the navigation badge in sync with the inbox.
-  useEffect(() => {
-    publishNewCount(newCount);
-  }, [newCount]);
-
-  // Nothing left unread → leave the "new only" filter automatically.
-  useEffect(() => {
-    if (onlyNew && newCount === 0) setOnlyNew(false);
-  }, [onlyNew, newCount]);
-
-  function markAllSeen() {
-    const now = Date.now();
-    writeLastSeenAt(now);
-    setLastSeenAt(now);
-    setOnlyNew(false);
-    publishNewCount(0);
-    toast.success("Marked all as seen");
-  }
 
   function openDetails(id: string) {
     navigate(`/listings/${encodeURIComponent(id)}`);
@@ -220,6 +199,107 @@ export function ListingsPage() {
       window.clearTimeout(existing);
       flipTimers.current.delete(id);
     }
+  }
+
+  function suppressNextClick(id: string) {
+    suppressClickRef.current = id;
+    if (clickGuardTimer.current != null) window.clearTimeout(clickGuardTimer.current);
+    clickGuardTimer.current = window.setTimeout(() => {
+      suppressClickRef.current = null;
+      clickGuardTimer.current = null;
+    }, SWIPE_CLICK_GUARD_MS);
+  }
+
+  function swipeStart(item: ItemView, e: ReactPointerEvent<HTMLLIElement>) {
+    if (e.pointerType === "mouse" || showHidden || item.notInterested) return;
+    if (busyId === item.id || exiting.has(item.id)) return;
+    if (!e.isPrimary) return;
+    swipeRef.current = {
+      id: item.id,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      x: 0,
+      engaged: false,
+    };
+  }
+
+  function swipeMove(e: ReactPointerEvent<HTMLLIElement>) {
+    const s = swipeRef.current;
+    if (!s || s.pointerId !== e.pointerId) return;
+
+    const dx = e.clientX - s.startX;
+    const dy = e.clientY - s.startY;
+
+    if (!s.engaged) {
+      // Let vertical scrolling win until the gesture is clearly horizontal.
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        swipeRef.current = null;
+        setSwipe(null);
+        return;
+      }
+      if (Math.abs(dx) < 8 || Math.abs(dx) <= Math.abs(dy)) return;
+      if (dx > 0) {
+        swipeRef.current = null;
+        setSwipe(null);
+        return;
+      }
+      s.engaged = true;
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* pointer capture is best-effort */
+      }
+    }
+
+    e.preventDefault();
+    const x = Math.max(-SWIPE_MAX_PX, Math.min(0, dx));
+    s.x = x;
+    setSwipe({ id: s.id, x });
+  }
+
+  function swipeEnd(
+    item: ItemView,
+    e: ReactPointerEvent<HTMLLIElement>,
+    cancelled = false,
+  ) {
+    const s = swipeRef.current;
+    if (!s || s.pointerId !== e.pointerId) return;
+    swipeRef.current = null;
+
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    if (!s.engaged) {
+      setSwipe(null);
+      return;
+    }
+
+    suppressNextClick(item.id);
+
+    if (!cancelled && s.x <= -SWIPE_DISMISS_PX) {
+      setSwipe(null);
+      void dismiss(item);
+      return;
+    }
+
+    // Below the threshold — spring back.
+    setSwipe({ id: item.id, x: 0 });
+    window.setTimeout(() => {
+      setSwipe((prev) => (prev?.id === item.id && prev.x === 0 ? null : prev));
+    }, 180);
+  }
+
+  function suppressSwipeClick(item: ItemView, e: ReactMouseEvent<HTMLLIElement>) {
+    if (suppressClickRef.current !== item.id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    suppressClickRef.current = null;
   }
 
   async function dismiss(item: ItemView) {
@@ -291,7 +371,7 @@ export function ListingsPage() {
   function switchView(hiddenView: boolean) {
     setShowHidden(hiddenView);
     setQuery("");
-    setOnlyNew(false);
+    setSwipe(null);
     if (hiddenView) setBestDeals(false);
   }
 
@@ -354,9 +434,7 @@ export function ListingsPage() {
         description={
           showHidden
             ? "Hidden listings — restore anything the AI got wrong."
-            : `${active.length} potential product${active.length === 1 ? "" : "s"}, newest first${
-                newCount > 0 ? ` · ${newCount} new since your last visit` : ""
-              }. AI rejects are hidden automatically.`
+            : `${active.length} potential product${active.length === 1 ? "" : "s"}, newest first. AI rejects are hidden automatically.`
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -396,39 +474,6 @@ export function ListingsPage() {
         }
       />
 
-      {!showHidden && newCount > 0 && (
-        <div className="flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/[0.04] px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 items-start gap-2.5">
-            <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary/10 text-primary">
-              <Inbox className="size-4" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-medium">
-                {newCount} new potential product{newCount === 1 ? "" : "s"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Since your last check
-                {lastSeenAt != null
-                  ? ` · ${formatRelative(new Date(lastSeenAt).toISOString())}`
-                  : ""}
-              </p>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant={onlyNew ? "secondary" : "outline"}
-              onClick={() => setOnlyNew((v) => !v)}
-            >
-              {onlyNew ? "Show all" : "Show new only"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={markAllSeen}>
-              Mark all seen
-            </Button>
-          </div>
-        </div>
-      )}
-
       {source.length > 0 && (
         <div className="relative max-w-md">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -461,7 +506,6 @@ export function ListingsPage() {
             {visible.map((item) => {
               const leaving = exiting.has(item.id);
               const imgBroken = brokenImages.has(item.id);
-              const fresh = !showHidden && isNewSince(item, lastSeenAt);
               const dropped =
                 typeof item.prevPrice === "number" &&
                 typeof item.price === "number" &&
@@ -472,202 +516,232 @@ export function ListingsPage() {
               const showMarket = Boolean(
                 market && Math.abs(market.deltaPct) >= 5,
               );
+              const swiping = swipe?.id === item.id;
+              const swipeX = swiping ? swipe.x : 0;
+              const swipeProgress = Math.min(
+                1,
+                Math.abs(swipeX) / SWIPE_DISMISS_PX,
+              );
               const detailLink = `/listings/${encodeURIComponent(item.id)}`;
 
               return (
                 <li
                   key={item.id}
                   className={cn(
-                    "group relative flex gap-3 p-3 transition-all duration-200 ease-out hover:bg-muted/35 sm:gap-4 sm:p-4",
+                    "group relative overflow-hidden transition-all duration-200 ease-out",
                     leaving && "pointer-events-none -translate-x-2 scale-[0.99] opacity-0",
                   )}
+                  onPointerDown={(e) => swipeStart(item, e)}
+                  onPointerMove={swipeMove}
+                  onPointerUp={(e) => swipeEnd(item, e)}
+                  onPointerCancel={(e) => swipeEnd(item, e, true)}
+                  onClickCapture={(e) => suppressSwipeClick(item, e)}
                 >
-                  <div className="relative size-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-muted sm:size-24">
-                    {item.image && !imgBroken ? (
-                      <img
-                        src={String(item.image)}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        referrerPolicy="no-referrer"
-                        className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-                        onError={() =>
-                          setBrokenImages((prev) => new Set(prev).add(item.id))
-                        }
-                      />
-                    ) : (
-                      <div className="grid size-full place-items-center text-muted-foreground/40">
-                        <ImageIcon className="size-5" />
-                      </div>
-                    )}
+                  <div
+                    className="pointer-events-none absolute inset-y-0 right-0 flex items-center gap-1.5 pr-4 text-destructive"
+                    style={{ opacity: swipeProgress }}
+                    aria-hidden
+                  >
+                    <Ban className="size-4" />
+                    <span className="text-xs font-medium">Not interested</span>
                   </div>
 
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <div className="flex items-start justify-between gap-2.5">
-                      <div className="min-w-0 flex-1">
-                        <h3 className="line-clamp-2 text-[14px] font-medium leading-snug tracking-tight text-foreground sm:text-[15px]">
-                          <Link
-                            to={detailLink}
-                            className="cursor-pointer rounded-sm outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-ring"
-                          >
-                            {String(item.name)}
-                          </Link>
-                        </h3>
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-[15px] font-semibold tabular-nums leading-tight tracking-tight text-primary sm:text-base">
-                          {priceLabel(item)}
-                        </p>
-                        {dropped != null && (
-                          <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground line-through">
-                            {formatPrice(item.prevPrice as number)}
+                  <div
+                    className={cn(
+                      "relative flex gap-3 bg-card p-3 group-hover:bg-muted/35 sm:gap-4 sm:p-4",
+                      !swiping && "transition-transform duration-200 ease-out",
+                    )}
+                    style={{
+                      touchAction: "pan-y",
+                      transform: swipeX ? `translateX(${swipeX}px)` : undefined,
+                    }}
+                  >
+                    <div className="relative size-[4.5rem] shrink-0 overflow-hidden rounded-lg bg-muted sm:size-24">
+                      {item.image && !imgBroken ? (
+                        <img
+                          src={String(item.image)}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          referrerPolicy="no-referrer"
+                          className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                          onError={() =>
+                            setBrokenImages((prev) => new Set(prev).add(item.id))
+                          }
+                        />
+                      ) : (
+                        <div className="grid size-full place-items-center text-muted-foreground/40">
+                          <ImageIcon className="size-5" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="flex items-start justify-between gap-2.5">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="line-clamp-2 text-[14px] font-medium leading-snug tracking-tight text-foreground sm:text-[15px]">
+                            <Link
+                              to={detailLink}
+                              className="cursor-pointer rounded-sm outline-none after:absolute after:inset-0 focus-visible:after:ring-2 focus-visible:after:ring-ring"
+                            >
+                              {String(item.name)}
+                            </Link>
+                          </h3>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-[15px] font-semibold tabular-nums leading-tight tracking-tight text-primary sm:text-base">
+                            {priceLabel(item)}
                           </p>
+                          {dropped != null && (
+                            <p className="mt-0.5 text-[10px] tabular-nums text-muted-foreground line-through">
+                              {formatPrice(item.prevPrice as number)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {showHidden && (
+                          <Badge variant="secondary">
+                            {item.notInterestedReason === "ai" ? "Hidden by AI" : "Hidden"}
+                          </Badge>
+                        )}
+                        {item.deal?.allTimeLow ? (
+                          <Badge
+                            variant="success"
+                            title={
+                              item.deal.lowestPrice != null
+                                ? `Lowest observed price: ${formatPrice(item.deal.lowestPrice)}`
+                                : "Lowest price observed"
+                            }
+                          >
+                            <TrendingDown className="size-3" />
+                            All-time low
+                          </Badge>
+                        ) : dropped != null ? (
+                          <Badge variant="success">
+                            <TrendingDown className="size-3" />-{formatPrice(dropped)}
+                          </Badge>
+                        ) : null}
+                        {market && showMarket && (
+                          <Badge
+                            variant={
+                              market.deltaPct <= -10
+                                ? "success"
+                                : market.deltaPct >= 10
+                                  ? "warning"
+                                  : "secondary"
+                            }
+                            title={`Shop ${formatPrice(market.shopPrice)} on Árukereső · ${market.sampleSize} offer${
+                              market.sampleSize === 1 ? "" : "s"
+                            }`}
+                          >
+                            {market.deltaPct > 0 ? (
+                              <TrendingUp className="size-3" />
+                            ) : (
+                              <TrendingDown className="size-3" />
+                            )}
+                            {market.deltaPct > 0 ? "+" : ""}
+                            {market.deltaPct}% vs shop
+                          </Badge>
+                        )}
+                        {typeof item.aiScore === "number" ? (
+                          <Badge
+                            variant={aiScoreVariant(item.aiScore, passThreshold)}
+                            title={
+                              item.aiReason
+                                ? `AI score ${item.aiScore}: ${item.aiReason}`
+                                : `AI score ${item.aiScore}`
+                            }
+                          >
+                            <Sparkles className="size-3" />
+                            {item.aiScore}
+                          </Badge>
+                        ) : item.aiVerdict ? (
+                          <Badge
+                            variant={item.aiVerdict === "pass" ? "success" : "destructive"}
+                            title={item.aiReason ?? "AI evaluation"}
+                          >
+                            AI {item.aiVerdict}
+                          </Badge>
+                        ) : null}
+                        {item.engineSlug && (
+                          <Badge variant="outline" className="font-mono text-[10px]">
+                            {formatEngine(item.engineSlug)}
+                          </Badge>
                         )}
                       </div>
-                    </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {fresh && <Badge variant="info">New</Badge>}
-                      {showHidden && (
-                        <Badge variant="secondary">
-                          {item.notInterestedReason === "ai" ? "Hidden by AI" : "Hidden"}
-                        </Badge>
-                      )}
-                      {item.deal?.allTimeLow ? (
-                        <Badge
-                          variant="success"
-                          title={
-                            item.deal.lowestPrice != null
-                              ? `Lowest observed price: ${formatPrice(item.deal.lowestPrice)}`
-                              : "Lowest price observed"
-                          }
-                        >
-                          <TrendingDown className="size-3" />
-                          All-time low
-                        </Badge>
-                      ) : dropped != null ? (
-                        <Badge variant="success">
-                          <TrendingDown className="size-3" />-{formatPrice(dropped)}
-                        </Badge>
-                      ) : null}
-                      {market && showMarket && (
-                        <Badge
-                          variant={
-                            market.deltaPct <= -10
-                              ? "success"
-                              : market.deltaPct >= 10
-                                ? "warning"
-                                : "secondary"
-                          }
-                          title={`Shop ${formatPrice(market.shopPrice)} on Árukereső · ${market.sampleSize} offer${
-                            market.sampleSize === 1 ? "" : "s"
-                          }`}
-                        >
-                          {market.deltaPct > 0 ? (
-                            <TrendingUp className="size-3" />
-                          ) : (
-                            <TrendingDown className="size-3" />
-                          )}
-                          {market.deltaPct > 0 ? "+" : ""}
-                          {market.deltaPct}% vs shop
-                        </Badge>
-                      )}
-                      {typeof item.aiScore === "number" ? (
-                        <Badge
-                          variant={aiScoreVariant(item.aiScore, passThreshold)}
-                          title={
-                            item.aiReason
-                              ? `AI score ${item.aiScore}: ${item.aiReason}`
-                              : `AI score ${item.aiScore}`
-                          }
-                        >
-                          <Sparkles className="size-3" />
-                          {item.aiScore}
-                        </Badge>
-                      ) : item.aiVerdict ? (
-                        <Badge
-                          variant={item.aiVerdict === "pass" ? "success" : "destructive"}
-                          title={item.aiReason ?? "AI evaluation"}
-                        >
-                          AI {item.aiVerdict}
-                        </Badge>
-                      ) : null}
-                      {item.engineSlug && (
-                        <Badge variant="outline" className="font-mono text-[10px]">
-                          {formatEngine(item.engineSlug)}
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="mt-auto flex items-end justify-between gap-2">
-                      <p className="text-[11px] text-muted-foreground">
-                        First seen {formatRelative(item.firstSeenAt)}
-                      </p>
-                      <div className="relative z-10 flex shrink-0 items-center gap-0.5">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-muted-foreground"
-                              asChild
-                            >
-                              <a
-                                href={String(item.url ?? "#")}
-                                target="_blank"
-                                rel="noreferrer"
-                                aria-label="Open original listing"
+                      <div className="mt-auto flex items-end justify-between gap-2">
+                        <p className="text-[11px] text-muted-foreground">
+                          First seen {formatRelative(item.firstSeenAt)}
+                        </p>
+                        <div className="relative z-10 flex shrink-0 items-center gap-0.5">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-muted-foreground"
+                                asChild
                               >
-                                <ExternalLink />
-                              </a>
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Open original</TooltipContent>
-                        </Tooltip>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              className="text-muted-foreground"
-                              aria-label="Listing actions"
-                            >
-                              <MoreHorizontal />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuItem onSelect={() => openDetails(item.id)}>
-                              <LayoutList />
-                              View details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <a href={String(item.url ?? "#")} target="_blank" rel="noreferrer">
-                                <ExternalLink />
-                                Open original
-                              </a>
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {item.notInterested ? (
-                              <DropdownMenuItem
-                                disabled={busyId === item.id}
-                                onSelect={() => void restore(item)}
+                                <a
+                                  href={String(item.url ?? "#")}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  aria-label="Open original listing"
+                                >
+                                  <ExternalLink />
+                                </a>
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Open original</TooltipContent>
+                          </Tooltip>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="text-muted-foreground"
+                                aria-label="Listing actions"
                               >
-                                <RotateCcw />
-                                Restore
+                                <MoreHorizontal />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                              <DropdownMenuItem onSelect={() => openDetails(item.id)}>
+                                <LayoutList />
+                                View details
                               </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                destructive
-                                disabled={busyId === item.id}
-                                onSelect={() => void dismiss(item)}
-                              >
-                                <Ban />
-                                Not interested
+                              <DropdownMenuItem asChild>
+                                <a href={String(item.url ?? "#")} target="_blank" rel="noreferrer">
+                                  <ExternalLink />
+                                  Open original
+                                </a>
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <DropdownMenuSeparator />
+                              {item.notInterested ? (
+                                <DropdownMenuItem
+                                  disabled={busyId === item.id}
+                                  onSelect={() => void restore(item)}
+                                >
+                                  <RotateCcw />
+                                  Restore
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem
+                                  destructive
+                                  disabled={busyId === item.id}
+                                  onSelect={() => void dismiss(item)}
+                                >
+                                  <Ban />
+                                  Not interested
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                     </div>
                   </div>
