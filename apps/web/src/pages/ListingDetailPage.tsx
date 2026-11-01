@@ -1034,20 +1034,26 @@ export function ListingDetailPage() {
                     : "No AI check yet. It runs with each scrape; you can run one now."}
                 </p>
               )}
-              <Button
-                variant={hasEvaluation ? "outline" : "default"}
-                size="sm"
-                className="w-full"
-                disabled={aiBusy}
-                onClick={() => void reevaluate()}
-              >
-                <Sparkles className={cn(aiBusy && "animate-pulse")} />
-                {aiBusy
-                  ? "Checking…"
-                  : hasEvaluation
-                    ? "Re-run AI check"
-                    : "Run AI check"}
-              </Button>
+              {listingState === "deleted" ? (
+                <p className="text-xs text-muted-foreground">
+                  Deleted listings are not checked again.
+                </p>
+              ) : (
+                <Button
+                  variant={hasEvaluation ? "outline" : "default"}
+                  size="sm"
+                  className="w-full"
+                  disabled={aiBusy}
+                  onClick={() => void reevaluate()}
+                >
+                  <Sparkles className={cn(aiBusy && "animate-pulse")} />
+                  {aiBusy
+                    ? "Checking…"
+                    : hasEvaluation
+                      ? "Re-run AI check"
+                      : "Run AI check"}
+                </Button>
+              )}
             </CardContent>
           </Card>
 
@@ -1155,20 +1161,26 @@ export function ListingDetailPage() {
                 </p>
               )}
 
-              <Button
-                variant={listing.deal?.market ? "outline" : "default"}
-                size="sm"
-                className="w-full"
-                onClick={() => refreshMarket()}
-                disabled={marketBusy}
-              >
-                <RefreshCw className={marketBusy ? "animate-spin" : undefined} />
-                {marketBusy
-                  ? "Checking Árukereső…"
-                  : listing.deal?.market
-                    ? "Re-check shop price"
-                    : "Check shop price"}
-              </Button>
+              {listingState === "deleted" ? (
+                <p className="text-xs text-muted-foreground">
+                  Deleted listings are not checked again.
+                </p>
+              ) : (
+                <Button
+                  variant={listing.deal?.market ? "outline" : "default"}
+                  size="sm"
+                  className="w-full"
+                  onClick={() => refreshMarket()}
+                  disabled={marketBusy}
+                >
+                  <RefreshCw className={marketBusy ? "animate-spin" : undefined} />
+                  {marketBusy
+                    ? "Checking Árukereső…"
+                    : listing.deal?.market
+                      ? "Re-check shop price"
+                      : "Check shop price"}
+                </Button>
+              )}
               {listing.deal?.market?.fetchedAt && (
                 <p className="text-[11px] text-muted-foreground">
                   Checked {formatRelative(listing.deal.market.fetchedAt)}

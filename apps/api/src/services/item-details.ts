@@ -1,4 +1,4 @@
-import { asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
 import {
   listings,
   scrapeRoutineResults,
@@ -46,7 +46,7 @@ export async function runItemDetailsJob(
       lastPrice: listings.lastPrice,
     })
     .from(listings)
-    .where(isNull(listings.detailsScrapedAt))
+    .where(and(isNull(listings.detailsScrapedAt), ne(listings.status, "deleted")))
     .orderBy(asc(listings.firstSeenAt))
     .limit(DETAILS_BATCH);
 
