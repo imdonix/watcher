@@ -223,12 +223,14 @@ Respond with JSON only, in exactly this shape:
 {"query": "Brand exact model with important variant"}
 
 Rules:
-- Keep the brand, exact model number/name and important variant (storage, capacity, voltage, size, colour only if part of the model).
-- Remove seller/marketing words, condition, location, price, delivery, warranty and generic noise.
+- Prefer the shortest manufacturer/model designation: brand + exact model name/number.
+- Include a generic product type ONLY when the listing has no usable model number/name.
+- Include important variants that are part of the model (storage, capacity, size), but NOT secondary specs such as battery Ah, blade/disc dimensions, weight, voltage unless voltage is part of the model name.
+- Remove seller/marketing words, condition, location, price, delivery, warranty and included accessories.
 - Do not translate. Keep the original product language (usually Hungarian or English).
 - If the listing is an accessory (case, cable, charger, battery, spare part), keep the accessory word.
 - If there is no identifiable product, return {"query": ""}.
-- Keep the query under 120 characters.`;
+- Keep the query under 80 characters.`;
 
 type ProductQueryRow = Pick<
   typeof listings.$inferSelect,
