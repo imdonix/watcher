@@ -140,6 +140,9 @@ async function main() {
 
   const server = Bun.serve({
     port: env.port,
+    // Market checks (+ AI product query) can legitimately take 15–40s.
+    // Bun closes idle connections after 10s by default, which caused 502s.
+    idleTimeout: 120,
     fetch: app.fetch,
   });
 

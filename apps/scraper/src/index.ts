@@ -245,6 +245,9 @@ async function main() {
 
   Bun.serve({
     port,
+    // Árukereső lookups can take 15–40s (browser + multiple navigations).
+    // Bun's default 10s idle timeout would drop the API's request.
+    idleTimeout: 180,
     fetch: app.fetch,
   });
 
