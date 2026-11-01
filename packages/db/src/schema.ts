@@ -130,6 +130,31 @@ export const listingEvents = pgTable("listing_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/**
+ * Cached Árukereső shop-price check per listing.
+ * One row per listing; refreshed on demand from the Market check card.
+ */
+export const marketPrices = pgTable("market_prices", {
+  listingId: varchar("listing_id", { length: 64 })
+    .primaryKey()
+    .references(() => listings.id, { onDelete: "cascade" }),
+  /** Query that was sent to the scraper. */
+  query: text("query").notNull(),
+  /** Median of the matched shop offers (HUF). */
+  shopPrice: integer("shop_price").notNull(),
+  shopPriceLow: integer("shop_price_low"),
+  shopPriceHigh: integer("shop_price_high"),
+  sampleSize: integer("sample_size").notNull().default(0),
+  /** model | similar */
+  confidence: varchar("confidence", { length: 16 }).notNull().default("similar"),
+  matchedTokens: jsonb("matched_tokens").$type<string[]>().notNull().default([]),
+  productName: text("product_name"),
+  productUrl: text("product_url"),
+  /** Raw offers used for the estimate (store, price, name, url). */
+  offers: jsonb("offers").$type<Array<Record<string, unknown>>>().notNull().default([]),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 /** Per-routine outcome inside a scrape run (drives missing-item safety). */
 export const scrapeRoutineResults = pgTable("scrape_routine_results", {
   id: serial("id").primaryKey(),
@@ -190,6 +215,8 @@ export type ListingSighting = typeof listingSightings.$inferSelect;
 export type ListingEvent = typeof listingEvents.$inferSelect;
 export type ScrapeRun = typeof scrapeRuns.$inferSelect;
 export type ScrapeRoutineResult = typeof scrapeRoutineResults.$inferSelect;
+export type MarketPrice = typeof marketPrices.$inferSelect;
+export type NewMarketPrice = typeof marketPrices.$inferInsert;
 export type WebPushSubscription = typeof webPushSubscriptions.$inferSelect;
 export type SchedulerState = typeof schedulerState.$inferSelect;
 export type Setting = typeof settings.$inferSelect;

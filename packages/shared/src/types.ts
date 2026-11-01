@@ -91,16 +91,64 @@ export const AI_EVALUATION_JOB_SLUG = "__ai_evaluate__";
 
 export type ListingStatus = "active" | "missing";
 
-/** Price context compared with similar listings. */
-export interface DealMarket {
-  medianPrice: number;
+/** One shop offer collected from Árukereső. */
+export interface ShopPriceOffer {
+  store: string | null;
+  price: number;
+  name?: string | null;
+  url?: string | null;
+}
+
+/** Result of an Árukereső shop-price lookup (executed by the scraper service). */
+export interface ShopPriceResult {
+  ok: boolean;
+  query: string;
+  /** Árukereső search URL that was opened. */
+  url: string;
+  /** Estimated shop price: median of the matched shop offers. */
+  price: number | null;
+  lowest: number | null;
+  highest: number | null;
   sampleSize: number;
-  /** Negative = cheaper than the median. */
-  deltaPct: number;
+  offers: ShopPriceOffer[];
+  productName: string | null;
+  productUrl: string | null;
   /** "model" = exact model token match; "similar" = broader product match. */
   confidence: "model" | "similar";
-  /** Normalized tokens shared by the comparable listings. */
+  /** Normalized tokens shared by the query and the matched product. */
   matchedTokens: string[];
+  error?: string;
+  durationMs?: number;
+}
+
+export interface ShopPriceRequest {
+  query: string;
+}
+
+/** Shop price context compared with the listing's resale price. */
+export interface DealMarket {
+  /** Estimated online shop price from Árukereső (median of shop offers). */
+  shopPrice: number;
+  /** Cheapest / most expensive shop offer used for the estimate. */
+  shopPriceLow: number;
+  shopPriceHigh: number;
+  /** This listing's current resale price. */
+  resellPrice: number;
+  /** Number of shop offers behind the estimate. */
+  sampleSize: number;
+  /** Negative = resale is cheaper than the shop price. */
+  deltaPct: number;
+  /** Positive = estimated saving vs. buying new (HUF). */
+  savings: number;
+  /** "model" = exact model token match; "similar" = broader product match. */
+  confidence: "model" | "similar";
+  /** Normalized tokens shared by the listing and the matched product. */
+  matchedTokens: string[];
+  /** The Árukereső product used for the comparison. */
+  productName?: string | null;
+  productUrl?: string | null;
+  source: "arukereso";
+  fetchedAt?: string | null;
 }
 
 export interface ListingDeal {

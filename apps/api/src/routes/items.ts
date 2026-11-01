@@ -1,11 +1,19 @@
 import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { listingEvents, listingSightings, listings, type Database } from "@watcher/db";
-import { formatPrice, type ListingDeal } from "@watcher/shared";
+import { formatPrice, type DealMarket, type ListingDeal } from "@watcher/shared";
 import { requireAuth, type AuthEnv } from "../middleware/auth";
 import { aiConfigured, evaluateListing, loadAiConfig } from "../services/ai";
-import { computeDeals, loadSightingStats } from "../services/deals";
+import {
+  computeDeals,
+  loadSightingStatFor,
+  loadSightingStats,
+  refreshMarketCheck,
+} from "../services/deals";
 import { log, logError } from "../lib/time";
+
+/** Deduplicate concurrent Market checks for the same listing. */
+const marketChecks = new Map<string, Promise<DealMarket>>();
 
 function mapListing(
   row: typeof listings.$inferSelect,
@@ -132,6 +140,44 @@ export function itemRoutes(db: Database) {
       events,
       priceHistory,
     });
+  });
+
+  /**
+   * Run a fresh Árukereső shop-price lookup for this listing.
+   * Kept out of GET so the detail page renders immediately from cache.
+   */
+  app.post("/:id/market", async (c) => {
+    const id = c.req.param("id");
+    const [row] = await db.select().from(listings).where(eq(listings.id, id)).limit(1);
+    if (!row) return c.json({ error: "Not found" }, 404);
+    if (row.lastPrice == null || row.lastPrice <= 0) {
+      return c.json({ error: "Listing has no price to compare" }, 400);
+    }
+
+    try {
+      let pending = marketChecks.get(id);
+      if (!pending) {
+        pending = refreshMarketCheck(db, row).finally(() => marketChecks.delete(id));
+        marketChecks.set(id, pending);
+      }
+      const market = await pending;
+      log("API", `market check ${id}: shop ${market.shopPrice} vs resell ${market.resellPrice}`);
+
+      const stats = new Map([[id, await loadSightingStatFor(db, id)]]);
+      const deals = await computeDeals(db, [row], stats);
+      return c.json({
+        market,
+        listing: mapListing(
+          row,
+          stats.get(id)?.count ?? 0,
+          deals.get(id) ?? null,
+        ),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logError("API", `market check failed for ${id}: ${message}`);
+      return c.json({ error: message }, 502);
+    }
   });
 
   app.post("/:id/not-interested", async (c) => {

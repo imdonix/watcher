@@ -11,6 +11,7 @@ import {
   Image as ImageIcon,
   Info,
   PackageSearch,
+  RefreshCw,
   Scale,
   Sparkles,
   TrendingDown,
@@ -37,6 +38,8 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageLoader } from "@/components/Spinner";
+
+const MARKET_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
 
 function MiniPriceChart({
   points,
@@ -147,11 +150,14 @@ export function ListingDetailPage() {
   const [passThreshold, setPassThreshold] = useState(65);
   const [targetInput, setTargetInput] = useState("");
   const [targetBusy, setTargetBusy] = useState(false);
+  const [marketBusy, setMarketBusy] = useState(false);
+  const [marketError, setMarketError] = useState<string | null>(null);
   const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const [heroIndex, setHeroIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [showStickyBar, setShowStickyBar] = useState(false);
   const summaryActionsRef = useRef<HTMLDivElement | null>(null);
+  const autoMarketRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -181,7 +187,32 @@ export function ListingDetailPage() {
   useEffect(() => {
     setHeroIndex(0);
     setBrokenImages(new Set());
+    setMarketError(null);
   }, [listing?.id]);
+
+  // Populate the Market check automatically the first time a listing is opened.
+  // Cached results make later visits instant; the card also has a manual refresh.
+  useEffect(() => {
+    if (!listing || listing.price == null) return;
+    const market = listing.deal?.market;
+    const fresh =
+      market?.fetchedAt != null &&
+      Date.now() - new Date(market.fetchedAt).getTime() < MARKET_FRESH_MS;
+    if (market && fresh) return;
+    // Árukereső compares retail products, not property/car listings.
+    if (
+      listing.engineSlug === "ingatlan.com" ||
+      listing.engineSlug === "hasznaltauto.hu" ||
+      String(listing.url ?? "").includes("ingatlan.jofogas.hu")
+    ) {
+      return;
+    }
+    if (autoMarketRef.current === listing.id) return;
+    autoMarketRef.current = listing.id;
+    void refreshMarket({ silent: true });
+    // refreshMarket is intentionally not a dependency — one attempt per listing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listing?.id, listing?.price, listing?.deal?.market]);
 
   // Only show the mobile action bar once the inline actions scroll away.
   useEffect(() => {
@@ -304,6 +335,43 @@ export function ListingDetailPage() {
       toast.error(err instanceof Error ? err.message : "Failed to save target price");
     } finally {
       setTargetBusy(false);
+    }
+  }
+
+  async function refreshMarket(options?: { silent?: boolean }) {
+    if (!listing) return;
+    setMarketBusy(true);
+    setMarketError(null);
+    try {
+      const res = await api.refreshMarket(listing.id);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              listing: {
+                ...prev.listing,
+                deal: res.listing.deal ?? prev.listing.deal,
+              },
+            }
+          : prev,
+      );
+      const m = res.market;
+      if (!options?.silent) {
+        toast.success(`Shop price ${formatPrice(m.shopPrice)}`, {
+          description:
+            m.deltaPct < 0
+              ? `${Math.abs(m.deltaPct)}% below the Árukereső shop price`
+              : m.deltaPct > 0
+                ? `${m.deltaPct}% above the Árukereső shop price`
+                : "Matches the Árukereső shop price",
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Market check failed";
+      setMarketError(message);
+      if (!options?.silent) toast.error(message);
+    } finally {
+      setMarketBusy(false);
     }
   }
 
@@ -977,21 +1045,23 @@ export function ListingDetailPage() {
                 Market check
               </CardTitle>
               <CardDescription>
-                How this price compares with similar listings on{" "}
-                {formatEngine(listing.engineSlug) || "the same site"}.
+                Estimated online shop price from Árukereső versus this listing's
+                resale price.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {listing.deal?.market ? (
                 <>
                   <div className="flex items-baseline justify-between gap-4">
-                    <span className="text-sm text-muted-foreground">Similar median</span>
+                    <span className="text-sm text-muted-foreground">
+                      Shop price (Árukereső)
+                    </span>
                     <span className="text-lg font-semibold tabular-nums">
-                      {formatPrice(listing.deal.market.medianPrice)}
+                      {formatPrice(listing.deal.market.shopPrice)}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                    <span className="text-muted-foreground">This listing</span>
+                    <span className="text-muted-foreground">Resale price</span>
                     <span className="flex items-center gap-2">
                       <span className="font-medium tabular-nums">
                         {listing.priceFormatted ?? formatPrice(listing.price)}
@@ -1012,10 +1082,19 @@ export function ListingDetailPage() {
                           : listing.deal.market.deltaPct > 0
                             ? "above"
                             : "at"}{" "}
-                        median
+                        shop
                       </Badge>
                     </span>
                   </div>
+
+                  <p className="text-sm font-medium">
+                    {listing.deal.market.savings > 0
+                      ? `Save ${formatPrice(listing.deal.market.savings)} vs buying new`
+                      : listing.deal.market.savings < 0
+                        ? `${formatPrice(Math.abs(listing.deal.market.savings))} above the shop price`
+                        : "Same as the estimated shop price"}
+                  </p>
+
                   <p
                     className="text-[11px] leading-relaxed text-muted-foreground"
                     title={
@@ -1024,20 +1103,66 @@ export function ListingDetailPage() {
                         : undefined
                     }
                   >
-                    Based on {listing.deal.market.sampleSize}{" "}
+                    {listing.deal.market.shopPriceLow !==
+                    listing.deal.market.shopPriceHigh
+                      ? `Shop range ${formatPrice(listing.deal.market.shopPriceLow)} – ${formatPrice(
+                          listing.deal.market.shopPriceHigh,
+                        )} · `
+                      : ""}
+                    {listing.deal.market.sampleSize} shop offer
+                    {listing.deal.market.sampleSize === 1 ? "" : "s"} ·{" "}
                     {listing.deal.market.confidence === "model"
-                      ? "same-model"
-                      : "similar"}{" "}
-                    listing
-                    {listing.deal.market.sampleSize === 1 ? "" : "s"}
-                    {listing.deal.market.confidence === "similar" ? " (broad match)" : ""}.
+                      ? "exact model match"
+                      : "broad match"}
                   </p>
+
+                  {listing.deal.market.productName && (
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Matched product:{" "}
+                      {listing.deal.market.productUrl ? (
+                        <a
+                          href={listing.deal.market.productUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline underline-offset-2 hover:text-foreground"
+                        >
+                          {listing.deal.market.productName}
+                        </a>
+                      ) : (
+                        listing.deal.market.productName
+                      )}
+                    </p>
+                  )}
                 </>
               ) : (
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  Not enough comparable listings yet. It will appear once more similar
-                  listings are tracked.
+                  {marketError
+                    ? `Could not find a shop price: ${marketError}`
+                    : "No shop price check yet. Run one to compare this resale price with current online shop offers on Árukereső."}
                 </p>
+              )}
+
+              <Button
+                variant={listing.deal?.market ? "outline" : "default"}
+                size="sm"
+                className="w-full"
+                onClick={() => refreshMarket()}
+                disabled={marketBusy}
+              >
+                <RefreshCw className={marketBusy ? "animate-spin" : undefined} />
+                {marketBusy
+                  ? "Checking Árukereső…"
+                  : listing.deal?.market
+                    ? "Refresh shop price"
+                    : "Check shop price"}
+              </Button>
+              {listing.deal?.market?.fetchedAt && (
+                <p className="text-[11px] text-muted-foreground">
+                  Checked {formatRelative(listing.deal.market.fetchedAt)}
+                </p>
+              )}
+              {marketError && listing.deal?.market && (
+                <p className="text-[11px] text-destructive">{marketError}</p>
               )}
 
               <div className="space-y-1.5 border-t pt-3 text-sm">

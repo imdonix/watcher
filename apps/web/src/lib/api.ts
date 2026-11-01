@@ -1,4 +1,5 @@
 import type {
+  DealMarket,
   EngineMeta,
   ItemView,
   ListingDetailResponse,
@@ -104,6 +105,14 @@ export const api = {
       verdict: { score: number; pass: boolean; reason: string; model: string };
       listing: ItemView;
     }>(`/items/${encodeURIComponent(id)}/ai-evaluate`, { method: "POST" });
+  },
+
+  /** Run a fresh Árukereső shop-price check and return the updated listing. */
+  refreshMarket(id: string) {
+    return request<{ market: DealMarket; listing: ItemView }>(
+      `/items/${encodeURIComponent(id)}/market`,
+      { method: "POST" },
+    );
   },
 
   /** Set / clear the per-listing price alert threshold (null clears). */

@@ -64,6 +64,13 @@
       "when": 1792953995228,
       "tag": "0008_ai_hide",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793558400000,
+      "tag": "0009_market_prices",
+      "breakpoints": true
     }
   ]
 }

@@ -470,10 +470,7 @@ export function ListingsPage() {
                   : null;
               const market = item.deal?.market;
               const showMarket = Boolean(
-                market &&
-                  (market.confidence === "model"
-                    ? Math.abs(market.deltaPct) >= 5
-                    : market.deltaPct <= -10),
+                market && Math.abs(market.deltaPct) >= 5,
               );
               const detailLink = `/listings/${encodeURIComponent(item.id)}`;
 
@@ -562,9 +559,9 @@ export function ListingsPage() {
                                 ? "warning"
                                 : "secondary"
                           }
-                          title={`Median ${formatPrice(market.medianPrice)} · ${market.sampleSize} ${
-                            market.confidence === "model" ? "same-model" : "similar"
-                          } listing${market.sampleSize === 1 ? "" : "s"}`}
+                          title={`Shop ${formatPrice(market.shopPrice)} on Árukereső · ${market.sampleSize} offer${
+                            market.sampleSize === 1 ? "" : "s"
+                          }`}
                         >
                           {market.deltaPct > 0 ? (
                             <TrendingUp className="size-3" />
@@ -572,7 +569,7 @@ export function ListingsPage() {
                             <TrendingDown className="size-3" />
                           )}
                           {market.deltaPct > 0 ? "+" : ""}
-                          {market.deltaPct}% vs market
+                          {market.deltaPct}% vs shop
                         </Badge>
                       )}
                       {typeof item.aiScore === "number" ? (

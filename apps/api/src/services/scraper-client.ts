@@ -3,6 +3,8 @@ import type {
   ScrapeItemResult,
   ScrapeJobRequest,
   ScrapeJobResult,
+  ShopPriceRequest,
+  ShopPriceResult,
 } from "@watcher/shared";
 import { env } from "../env";
 import { log, logError } from "../lib/time";
@@ -80,6 +82,58 @@ export async function runScrapeItem(req: ScrapeItemRequest): Promise<ScrapeItemR
       engine: req.engine,
       url: req.url,
       details: null,
+      error: message,
+    };
+  }
+}
+
+export async function runShopPrice(req: ShopPriceRequest): Promise<ShopPriceResult> {
+  const url = `${env.scraperUrl.replace(/\/$/, "")}/shop-price`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+      signal: AbortSignal.timeout(120_000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      logError("ScraperClient", `shop-price HTTP ${res.status}: ${text}`);
+      return {
+        ok: false,
+        query: req.query,
+        url: "",
+        price: null,
+        lowest: null,
+        highest: null,
+        sampleSize: 0,
+        offers: [],
+        productName: null,
+        productUrl: null,
+        confidence: "similar",
+        matchedTokens: [],
+        error: `Scraper HTTP ${res.status}`,
+      };
+    }
+
+    return (await res.json()) as ShopPriceResult;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logError("ScraperClient", `shop-price: ${message}`);
+    return {
+      ok: false,
+      query: req.query,
+      url: "",
+      price: null,
+      lowest: null,
+      highest: null,
+      sampleSize: 0,
+      offers: [],
+      productName: null,
+      productUrl: null,
+      confidence: "similar",
+      matchedTokens: [],
       error: message,
     };
   }

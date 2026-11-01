@@ -1,110 +1,32 @@
-import { and, gte, isNotNull, sql } from "drizzle-orm";
-import { listingSightings, listings, type Database } from "@watcher/db";
-import type { ListingDeal } from "@watcher/shared";
+import { eq, inArray, sql } from "drizzle-orm";
+import {
+  listingSightings,
+  listings,
+  marketPrices,
+  type Database,
+} from "@watcher/db";
+import type { DealMarket, ListingDeal } from "@watcher/shared";
+import { runShopPrice } from "./scraper-client";
 
-/** How far back comparable listings are considered. */
-const MARKET_WINDOW_DAYS = 180;
-/** A model-level comparison needs at least this many listings. */
-const MIN_MODEL_COMPS = 3;
-/** A broader comparison needs a larger sample to be worth showing. */
-const MIN_SIMILAR_COMPS = 5;
-
-/** Words that carry no product information. Token forms are normalized. */
-const STOP_WORDS = new Set([
-  "elado",
-  "hasznalt",
-  "uj",
-  "hibas",
-  "jo",
-  "szep",
-  "allapot",
-  "darab",
-  "db",
-  "es",
-  "az",
-  "egy",
-  "the",
-  "for",
-  "with",
-  "and",
-  "original",
-  "gyari",
-  "komplett",
-  "ar",
-  "ft",
-  "huf",
-  "ezer",
-  "ingyen",
-  "akcio",
-  "sale",
-  "new",
-  "used",
-  "like",
-  "top",
-  "budapest",
-  "magyarorszag",
-  "hirdetes",
-  "kinal",
-  "keres",
-  "elhelyezkedes",
-  "varos",
-  "megye",
-  "telepules",
-  "cim",
-  "kerulet",
-  "utca",
+/** Attribute keys that help Árukereső find the exact product. */
+const PRODUCT_ATTR_KEYS = new Set([
   "marka",
+  "brand",
+  "gyarto",
+  "gyartmany",
+  "manufacturer",
+  "modell",
+  "model",
   "tipus",
-  "leiras",
-  "description",
-  "condition",
-  "seller",
-  "location",
-  "hirdeto",
-  "felado",
-  "telefon",
-  "phone",
-  "email",
-  "kapcsolat",
-  "contact",
-  "weboldal",
-  "honlap",
-  "ugyfel",
-  "ugyfelszolgalat",
-  "szallitas",
-  "garancia",
-  "garancia",
+  "type",
+  "szeria",
+  "series",
+  "meret",
+  "kapacitas",
+  "capacity",
+  "tarhely",
+  "storage",
 ]);
-
-/** Attribute keys that identify people/places rather than the product. */
-const PERSONAL_ATTRS = new Set([
-  "seller",
-  "hirdeto",
-  "felado",
-  "telefon",
-  "phone",
-  "email",
-  "kapcsolat",
-  "contact",
-  "weboldal",
-  "honlap",
-  "ugyfel",
-  "ugyfelszolgalat",
-]);
-
-/** Location attrs are useful for real estate but not for product prices. */
-const PLACE_ATTRS = new Set([
-  "location",
-  "elhelyezkedes",
-  "varos",
-  "megye",
-  "telepules",
-  "cim",
-  "kerulet",
-  "utca",
-]);
-
-const REAL_ESTATE_ENGINES = new Set(["ingatlan.com"]);
 
 export interface SightingStat {
   count: number;
@@ -114,14 +36,25 @@ export interface SightingStat {
 
 type ListingRow = Pick<
   typeof listings.$inferSelect,
-  "id" | "name" | "engineSlug" | "lastPrice" | "details"
+  "id" | "name" | "lastPrice" | "details"
 >;
 
-interface PoolItem {
-  row: ListingRow;
-  tokens: Set<string>;
-  seller: string | null;
-  price: number;
+type MarketQuote = Pick<
+  typeof marketPrices.$inferSelect,
+  | "shopPrice"
+  | "shopPriceLow"
+  | "shopPriceHigh"
+  | "sampleSize"
+  | "confidence"
+  | "matchedTokens"
+  | "productName"
+  | "productUrl"
+  | "fetchedAt"
+>;
+
+interface QuoteLike extends Partial<Omit<MarketQuote, "fetchedAt">> {
+  shopPrice: number;
+  fetchedAt?: Date | string | null;
 }
 
 function normalizeText(value: string): string {
@@ -129,65 +62,6 @@ function normalizeText(value: string): string {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-}
-
-function tokenize(value: string): Set<string> {
-  const parts = normalizeText(value)
-    .split(/[^a-z0-9]+/)
-    .filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
-
-  const tokens = new Set(parts);
-  // Join adjacent words so "GKS 185" also produces "gks185".
-  for (let i = 0; i < parts.length - 1; i++) {
-    tokens.add(`${parts[i]}${parts[i + 1]}`);
-  }
-  return tokens;
-}
-
-function isModelToken(token: string): boolean {
-  return token.length >= 3 && /\d/.test(token);
-}
-
-function attributeEntries(
-  row: ListingRow,
-): Array<[string, unknown]> {
-  const details = row.details as { attributes?: Record<string, unknown> } | null;
-  const attrs = details?.attributes;
-  if (!attrs || typeof attrs !== "object") return [];
-  return Object.entries(attrs);
-}
-
-function tokensFor(row: ListingRow): Set<string> {
-  const tokens = tokenize(row.name);
-  const realEstate = REAL_ESTATE_ENGINES.has(row.engineSlug);
-
-  for (const [key, value] of attributeEntries(row)) {
-    const k = normalizeText(key).trim();
-    if (PERSONAL_ATTRS.has(k)) continue;
-    if (!realEstate && PLACE_ATTRS.has(k)) continue;
-    if (typeof value !== "string" && typeof value !== "number") continue;
-    for (const token of tokenize(String(value).slice(0, 160))) tokens.add(token);
-  }
-  return tokens;
-}
-
-function sellerFor(row: ListingRow): string | null {
-  for (const [key, value] of attributeEntries(row)) {
-    const k = normalizeText(key).trim();
-    if ((k === "seller" || k === "hirdeto" || k === "felado") && typeof value === "string") {
-      const seller = normalizeText(value).replace(/[^a-z0-9]+/g, " ").trim();
-      return seller || null;
-    }
-  }
-  return null;
-}
-
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2
-    ? sorted[mid]!
-    : Math.round((sorted[mid - 1]! + sorted[mid]!) / 2);
 }
 
 /** Observation count + lowest/highest price per listing. */
@@ -212,9 +86,108 @@ export async function loadSightingStats(
   );
 }
 
+/** Observation count + lowest/highest price for one listing. */
+export async function loadSightingStatFor(
+  db: Database,
+  listingId: string,
+): Promise<SightingStat> {
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      lowest: sql<number | null>`min(${listingSightings.price})::int`,
+      highest: sql<number | null>`max(${listingSightings.price})::int`,
+    })
+    .from(listingSightings)
+    .where(eq(listingSightings.listingId, listingId));
+
+  return {
+    count: row?.count ?? 0,
+    lowest: row?.lowest ?? null,
+    highest: row?.highest ?? null,
+  };
+}
+
 /**
- * Price context for the requested listings: all-time low plus a median from
- * same-model or similar listings on the same engine.
+ * Build the product query used for the Árukereső lookup. The listing title is
+ * the primary source; brand/model attributes are appended when they add detail
+ * (e.g. "iPhone 13 128GB" + "Apple").
+ */
+export function buildMarketQuery(row: ListingRow): string {
+  const details = row.details as { attributes?: Record<string, unknown> } | null;
+  const attrs = details?.attributes ?? {};
+
+  const nameNorm = normalizeText(row.name);
+  const additions: string[] = [];
+
+  for (const [key, value] of Object.entries(attrs)) {
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    const keyNorm = normalizeText(key).replace(/[^a-z0-9]+/g, "");
+    if (!PRODUCT_ATTR_KEYS.has(keyNorm)) continue;
+    const text = String(value).replace(/\s+/g, " ").trim();
+    if (!text || text.length > 60) continue;
+    const textNorm = normalizeText(text);
+    if (nameNorm.includes(textNorm)) continue;
+    if (additions.some((a) => normalizeText(a) === textNorm)) continue;
+    additions.push(text);
+  }
+
+  return [row.name, ...additions]
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+}
+
+function marketFromQuote(resellPrice: number, quote: QuoteLike): DealMarket {
+  const shopPrice = Math.max(1, Math.round(quote.shopPrice));
+  const low = Math.max(1, Math.round(quote.shopPriceLow ?? shopPrice));
+  const high = Math.max(low, Math.round(quote.shopPriceHigh ?? shopPrice));
+
+  return {
+    shopPrice,
+    shopPriceLow: Math.min(low, shopPrice),
+    shopPriceHigh: Math.max(high, shopPrice),
+    resellPrice,
+    sampleSize: quote.sampleSize ?? 0,
+    deltaPct: Math.round(((resellPrice - shopPrice) / shopPrice) * 100),
+    savings: shopPrice - resellPrice,
+    confidence: quote.confidence === "model" ? "model" : "similar",
+    matchedTokens: Array.isArray(quote.matchedTokens) ? quote.matchedTokens : [],
+    productName: quote.productName ?? null,
+    productUrl: quote.productUrl ?? null,
+    source: "arukereso",
+    fetchedAt: quote.fetchedAt ? new Date(quote.fetchedAt).toISOString() : null,
+  };
+}
+
+function emptyDeal(
+  target: ListingRow,
+  stat: SightingStat | undefined,
+): ListingDeal {
+  const price = target.lastPrice;
+  const observations = stat?.count ?? 0;
+  const lowest = stat?.lowest ?? null;
+  const highest = stat?.highest ?? null;
+
+  return {
+    market: null,
+    allTimeLow:
+      price != null &&
+      lowest != null &&
+      highest != null &&
+      observations >= 2 &&
+      highest > lowest &&
+      price <= lowest,
+    lowestPrice: lowest,
+    highestPrice: highest,
+    observations,
+  };
+}
+
+/**
+ * Price context for the requested listings: all-time low plus the cached
+ * Árukereső shop-price comparison. Cached rows only — live lookups happen via
+ * `refreshMarketCheck` so list/detail requests stay fast.
  */
 export async function computeDeals(
   db: Database,
@@ -224,143 +197,85 @@ export async function computeDeals(
   const out = new Map<string, ListingDeal>();
   if (targets.length === 0) return out;
 
-  const cutoff = new Date(Date.now() - MARKET_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const ids = [...new Set(targets.map((target) => target.id))];
   const rows = await db
-    .select({
-      id: listings.id,
-      name: listings.name,
-      engineSlug: listings.engineSlug,
-      lastPrice: listings.lastPrice,
-      details: listings.details,
-    })
-    .from(listings)
-    .where(and(isNotNull(listings.lastPrice), gte(listings.lastSeenAt, cutoff)));
-
-  const pool: PoolItem[] = rows
-    .filter((row) => (row.lastPrice ?? 0) > 0)
-    .map((row) => ({
-      row,
-      tokens: tokensFor(row),
-      seller: sellerFor(row),
-      price: row.lastPrice!,
-    }));
-
-  const index = new Map<string, number[]>();
-  for (let i = 0; i < pool.length; i++) {
-    for (const token of pool[i]!.tokens) {
-      const list = index.get(token);
-      if (list) list.push(i);
-      else index.set(token, [i]);
-    }
-  }
-  const poolById = new Map(pool.map((item, i) => [item.row.id, i]));
+    .select()
+    .from(marketPrices)
+    .where(inArray(marketPrices.listingId, ids));
+  const quotes = new Map(rows.map((row) => [row.listingId, row]));
 
   for (const target of targets) {
-    const stat = stats.get(target.id);
-    const price = target.lastPrice;
-    const observations = stat?.count ?? 0;
-    const lowest = stat?.lowest ?? null;
-    const highest = stat?.highest ?? null;
-
-    const deal: ListingDeal = {
-      market: null,
-      allTimeLow:
-        price != null &&
-        lowest != null &&
-        highest != null &&
-        observations >= 2 &&
-        highest > lowest &&
-        price <= lowest,
-      lowestPrice: lowest,
-      highestPrice: highest,
-      observations,
-    };
-
-    const targetIndex = poolById.get(target.id);
-    if (targetIndex == null || price == null || price <= 0) {
-      out.set(target.id, deal);
-      continue;
+    const deal = emptyDeal(target, stats.get(target.id));
+    const quote = quotes.get(target.id);
+    if (quote && target.lastPrice != null && target.lastPrice > 0) {
+      deal.market = marketFromQuote(target.lastPrice, quote);
     }
-
-    const targetItem = pool[targetIndex]!;
-    const broadCounts = new Map<number, number>();
-    const modelMatches = new Set<number>();
-
-    for (const token of targetItem.tokens) {
-      const posting = index.get(token);
-      if (!posting) continue;
-      const model = isModelToken(token);
-
-      for (const i of posting) {
-        if (i === targetIndex) continue;
-        const comp = pool[i]!;
-        if (comp.row.engineSlug !== target.engineSlug) continue;
-        if (
-          targetItem.seller &&
-          comp.seller &&
-          targetItem.seller === comp.seller
-        ) {
-          continue;
-        }
-        broadCounts.set(i, (broadCounts.get(i) ?? 0) + 1);
-        if (model) modelMatches.add(i);
-      }
-    }
-
-    const modelIds = [...modelMatches];
-    const similarIds = [...broadCounts.entries()]
-      .filter(([, shared]) => shared >= 2)
-      .map(([i]) => i);
-
-    let chosen: number[] = [];
-    let confidence: "model" | "similar" = "similar";
-    if (modelIds.length >= MIN_MODEL_COMPS) {
-      chosen = modelIds;
-      confidence = "model";
-    } else if (similarIds.length >= MIN_SIMILAR_COMPS) {
-      chosen = similarIds;
-      confidence = "similar";
-    }
-    if (chosen.length === 0) {
-      out.set(target.id, deal);
-      continue;
-    }
-
-    const prices = chosen
-      .map((i) => pool[i]!.price)
-      .filter((p) => p > 0);
-    if (prices.length < (confidence === "model" ? MIN_MODEL_COMPS : MIN_SIMILAR_COMPS)) {
-      out.set(target.id, deal);
-      continue;
-    }
-
-    const med = median(prices);
-    if (med <= 0) {
-      out.set(target.id, deal);
-      continue;
-    }
-
-    const tokenCounts = new Map<string, number>();
-    for (const token of targetItem.tokens) {
-      let n = 0;
-      for (const i of chosen) if (pool[i]!.tokens.has(token)) n++;
-      if (n > 0) tokenCounts.set(token, n);
-    }
-    const matchedTokens = [...tokenCounts.entries()]
-      .filter(([, n]) => n >= Math.ceil(chosen.length * 0.25))
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([token]) => token);
-
-    deal.market = {
-      medianPrice: med,
-      sampleSize: prices.length,
-      deltaPct: Math.round(((price - med) / med) * 100),
-      confidence,
-      matchedTokens,
-    };
     out.set(target.id, deal);
   }
 
   return out;
+}
+
+/**
+ * Run a fresh Árukereső shop-price lookup for one listing, persist it and
+ * return the resulting market comparison.
+ */
+export async function refreshMarketCheck(
+  db: Database,
+  target: ListingRow,
+): Promise<DealMarket> {
+  if (target.lastPrice == null || target.lastPrice <= 0) {
+    throw new Error("Listing has no price to compare");
+  }
+
+  const query = buildMarketQuery(target);
+  const result = await runShopPrice({ query });
+
+  if (!result.ok || result.price == null || !Number.isFinite(result.price)) {
+    throw new Error(result.error || "No shop price found on arukereso.hu");
+  }
+
+  const fetchedAt = new Date();
+  const values = {
+    listingId: target.id,
+    query,
+    shopPrice: Math.round(result.price),
+    shopPriceLow:
+      result.lowest != null && Number.isFinite(result.lowest)
+        ? Math.round(result.lowest)
+        : null,
+    shopPriceHigh:
+      result.highest != null && Number.isFinite(result.highest)
+        ? Math.round(result.highest)
+        : null,
+    sampleSize: result.sampleSize,
+    confidence: result.confidence,
+    matchedTokens: result.matchedTokens,
+    productName: result.productName,
+    productUrl: result.productUrl,
+    offers: result.offers as unknown as Array<Record<string, unknown>>,
+    fetchedAt,
+  };
+
+  await db
+    .insert(marketPrices)
+    .values(values)
+    .onConflictDoUpdate({
+      target: marketPrices.listingId,
+      set: {
+        query: values.query,
+        shopPrice: values.shopPrice,
+        shopPriceLow: values.shopPriceLow,
+        shopPriceHigh: values.shopPriceHigh,
+        sampleSize: values.sampleSize,
+        confidence: values.confidence,
+        matchedTokens: values.matchedTokens,
+        productName: values.productName,
+        productUrl: values.productUrl,
+        offers: values.offers,
+        fetchedAt: values.fetchedAt,
+      },
+    });
+
+  return marketFromQuote(target.lastPrice, values);
 }

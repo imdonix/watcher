@@ -87,9 +87,9 @@ Web dev server: http://localhost:5173 (proxies `/api` → API).
 - **Scheduled scrapes**; **notify after every scrape** (success or failure)
 - **PWA** + **Web Push**
 - **Listing tracking**: permanent `listings` + `listing_sightings` (price/history) + `listing_events` (first_seen / price_change / missing / reappeared). Missing is only set after a **complete** routine scrape.
-- **Postgres**: `search_routines`, `listings`, `listing_sightings`, `listing_events`, `scrape_runs`, `scrape_routine_results`, `settings`, …
+- **Postgres**: `search_routines`, `listings`, `listing_sightings`, `listing_events`, `scrape_runs`, `scrape_routine_results`, `market_prices`, `settings`, …
 - **AI evaluation**: each routine can define a prompt; listings scoring below the pass threshold are automatically hidden from the potential-products feed and never push a notification. Changing the prompt re-opens them for re-evaluation.
-- **Deal check**: market median from same-model (or similar) listings on the same engine, all-time-low detection, deal badges and a "Best deals" sort.
+- **Deal check**: all-time-low detection plus an on-demand **Árukereső** shop-price check that compares the listing's resale price with the median of current online shop offers. Results are cached per listing; deal badges and the "Best deals" sort use the shop-price delta.
 
 ## Scraper engines
 
@@ -118,6 +118,18 @@ Builds `/aprok[/<category>]/keres.php` (or the browse page when no query is set)
 > Note: hardverapro serves filtered search results only to a "warmed-up" session — a
 > fresh session is `302`-redirected to the unfiltered browse page. The engine detects
 > this and retries the search URL until the real (filtered) page is returned.
+
+### Árukereső shop-price lookup
+
+The Market check card on a listing calls the scraper's `POST /shop-price` endpoint.
+It searches `https://www.arukereso.hu/CategorySearch.php?st=…`, ranks results against
+the listing title (model numbers weigh heavily), opens the best matching product page
+and collects the shop offers. The **median offer** is stored as the estimated shop
+price, with low/high range and offer count. Comparisons are cached in
+`market_prices`; use the card's **Refresh shop price** button to re-run the lookup.
+
+The lookup is separate from the routine engines above — it is a one-off product query,
+not a paginated listing scrape.
 
 ## Configuration
 
@@ -162,6 +174,7 @@ cd apps/api && bunx web-push generate-vapid-keys
 | GET | `/engines` | — | Scraper engine schemas |
 | GET/POST | `/routines`, `/routines/upload` | Bearer | List / replace routines |
 | GET | `/items` | Bearer | Found deals |
+| POST | `/items/:id/market` | Bearer | Run/refresh an Árukereső shop-price check |
 | POST | `/scrap` | Bearer | Force scrape |
 | POST | `/notify` | Bearer | Force notify (log + web push) |
 | GET | `/status` | Bearer | Health, schedule, scrape run history |
