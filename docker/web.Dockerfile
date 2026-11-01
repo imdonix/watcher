@@ -4,7 +4,7 @@
 #   docker build -f docker/web.Dockerfile -t watcher-web .
 
 # ── manifests: every workspace package.json, nothing else ────────────────────
-FROM oven/bun:1.4.2-debian AS manifests
+FROM oven/bun:1.4.4-debian AS manifests
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY packages ./packages
@@ -15,7 +15,7 @@ RUN find packages apps -type d -name node_modules -prune -exec rm -rf {} + 2>/de
     true
 
 # ── build: need devDependencies (vite, typescript, …) ────────────────────────
-FROM oven/bun:1.4.2-debian AS build
+FROM oven/bun:1.4.4-debian AS build
 WORKDIR /app
 COPY --from=manifests /app ./
 RUN bun install --frozen-lockfile --filter @watcher/web --linker=hoisted
@@ -29,7 +29,7 @@ ENV VITE_API_URL=$VITE_API_URL
 RUN bun run build
 
 # ── runtime: static assets only ──────────────────────────────────────────────
-FROM nginx:1.27-alpine
+FROM nginx:1.30-alpine
 ENV API_UPSTREAM=api:3000
 COPY apps/web/nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html

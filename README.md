@@ -57,6 +57,8 @@ For cluster deploys, copy `deployment/values.example.yaml` to the gitignored
 
 ## Local development (Bun)
 
+Requires **Bun 1.4.4+** (the version used by the production Docker images).
+
 Config comes from process environment or built-in defaults in each app (same keys as Compose). No `.env` files in the repo.
 
 ```bash
