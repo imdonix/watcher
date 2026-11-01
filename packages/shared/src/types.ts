@@ -75,6 +75,8 @@ export interface ScrapeItemResult {
   engine: string;
   url: string;
   details: ListingItemDetails | null;
+  /** True when the item page returned HTTP 404/410 (listing is gone). */
+  deleted?: boolean;
   /** Optional list-level field upgrades from the detail page */
   name?: string | null;
   price?: number | null;
@@ -92,7 +94,18 @@ export const AI_EVALUATION_JOB_SLUG = "__ai_evaluate__";
 /** Synthetic engine slug for the per-run market check job in scrape_routine_results */
 export const MARKET_CHECK_JOB_SLUG = "__market_check__";
 
-export type ListingStatus = "active" | "missing";
+/** Synthetic engine slug for the per-run missing-item verification job */
+export const ITEM_VERIFICATION_JOB_SLUG = "__verify_missing__";
+
+export type ListingStatus = "active" | "missing" | "deleted";
+
+/** User-visible lifecycle state derived by the API. */
+export type ListingState =
+  | "interesting"
+  | "not_interested"
+  | "ruled_out"
+  | "missing"
+  | "deleted";
 
 /** One shop offer collected from Árukereső. */
 export interface ShopPriceOffer {
@@ -172,6 +185,8 @@ export interface ItemView {
   priceFormatted?: string;
   engineSlug?: string;
   status: ListingStatus;
+  /** Derived user-visible lifecycle state. */
+  state?: ListingState;
   /** Hidden from the potential-products feed (user dismissal or AI reject) */
   notInterested?: boolean;
   notInterestedAt?: string | null;
@@ -181,6 +196,10 @@ export interface ItemView {
   available?: boolean;
   firstSeenAt?: string;
   lastSeenAt?: string;
+  /** Last missing-item verification attempt */
+  lastVerifiedAt?: string | null;
+  /** Set when the item page returned 404/410 */
+  deletedAt?: string | null;
   sightingCount?: number;
   sent?: boolean;
   found?: string;
@@ -245,7 +264,7 @@ export interface ApiError {
 
 /** Live scrape progress while a run is active (null / idle when not scraping). */
 export interface ScrapeProgress {
-  phase: "idle" | "starting" | "routine" | "details" | "ai" | "market" | "finishing" | "notify";
+  phase: "idle" | "starting" | "routine" | "verify" | "details" | "ai" | "market" | "finishing" | "notify";
   /** Human-readable line for the UI banner */
   message: string;
   runId?: number | null;
@@ -327,7 +346,8 @@ export type ListingEventKind =
   | "price_change"
   | "target_hit"
   | "missing"
-  | "reappeared";
+  | "reappeared"
+  | "deleted";
 
 /** System settings (persisted in `settings` table). */
 export interface SystemSettings {

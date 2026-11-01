@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { desc, eq } from "drizzle-orm";
 import { listingEvents, listingSightings, listings, type Database } from "@watcher/db";
-import { formatPrice, type DealMarket, type ListingDeal } from "@watcher/shared";
+import { formatPrice, type DealMarket, type ListingDeal, type ListingState } from "@watcher/shared";
 import { requireAuth, type AuthEnv } from "../middleware/auth";
 import { aiConfigured, evaluateListing, loadAiConfig } from "../services/ai";
 import {
@@ -15,6 +15,15 @@ import { log, logError } from "../lib/time";
 
 /** Deduplicate concurrent Market checks for the same listing. */
 const marketChecks = new Map<string, Promise<DealMarket>>();
+
+function listingState(row: typeof listings.$inferSelect): ListingState {
+  if (row.status === "deleted") return "deleted";
+  if (row.notInterested) {
+    return row.notInterestedReason === "ai" ? "ruled_out" : "not_interested";
+  }
+  if (row.status === "missing") return "missing";
+  return "interesting";
+}
 
 function mapListing(
   row: typeof listings.$inferSelect,
@@ -31,12 +40,15 @@ function mapListing(
     priceFormatted: formatPrice(row.lastPrice),
     engineSlug: row.engineSlug,
     status: row.status,
+    state: listingState(row),
     notInterested: row.notInterested,
     notInterestedAt: row.notInterestedAt,
     notInterestedReason: (row.notInterestedReason as "user" | "ai" | null) ?? null,
     available,
     firstSeenAt: row.firstSeenAt,
     lastSeenAt: row.lastSeenAt,
+    lastVerifiedAt: row.lastVerifiedAt,
+    deletedAt: row.deletedAt,
     sightingCount,
     found: row.lastSeenAt,
     details: row.details ?? null,
@@ -60,19 +72,27 @@ export function itemRoutes(db: Database) {
 
   app.get("/", async (c) => {
     const limit = Math.min(Number(c.req.query("limit") ?? 100), 500);
-    const filter = c.req.query("status"); // active | missing | dismissed | available | all
+    const filter = c.req.query("status"); // interesting | hidden | missing | deleted | all
     log("API", `Listings list filter=${filter ?? "all"}`);
 
     let rows = await db.select().from(listings).orderBy(desc(listings.lastSeenAt)).limit(limit * 2);
 
-    if (filter === "active" || filter === "available") {
+    if (filter === "active" || filter === "available" || filter === "interesting") {
       rows = rows.filter((r) => r.status === "active" && !r.notInterested);
     } else if (filter === "missing") {
-      rows = rows.filter((r) => r.status === "missing");
-    } else if (filter === "dismissed" || filter === "not_interested") {
-      rows = rows.filter((r) => r.notInterested);
+      rows = rows.filter((r) => r.status === "missing" && !r.notInterested);
+    } else if (filter === "deleted") {
+      rows = rows.filter((r) => r.status === "deleted");
+    } else if (
+      filter === "dismissed" ||
+      filter === "not_interested" ||
+      filter === "hidden"
+    ) {
+      rows = rows.filter((r) => r.notInterested && r.status !== "deleted");
     } else if (filter === "unavailable") {
-      rows = rows.filter((r) => r.status === "missing" || r.notInterested);
+      rows = rows.filter(
+        (r) => r.status === "missing" || r.status === "deleted" || r.notInterested,
+      );
     }
 
     rows = rows.slice(0, limit);

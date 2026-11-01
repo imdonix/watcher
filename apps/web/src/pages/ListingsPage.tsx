@@ -10,7 +10,6 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowDownWideNarrow,
-  ArrowLeft,
   Ban,
   ExternalLink,
   EyeOff,
@@ -21,6 +20,7 @@ import {
   RotateCcw,
   Search,
   Sparkles,
+  Trash2,
   TrendingDown,
   TrendingUp,
   X,
@@ -31,6 +31,7 @@ import { formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { aiScoreVariant } from "@/lib/ai";
 import { formatEngine, formatRelative } from "@/lib/format";
+import { listingStateOf } from "@/lib/listing-state";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -74,11 +75,13 @@ const SWIPE_MAX_PX = 140;
 /** Ignore the synthetic click that follows a swipe. */
 const SWIPE_CLICK_GUARD_MS = 450;
 
+type ListView = "interesting" | "hidden" | "missing" | "deleted";
+
 export function ListingsPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<ItemView[]>([]);
   const [query, setQuery] = useState("");
-  const [showHidden, setShowHidden] = useState(false);
+  const [view, setView] = useState<ListView>("interesting");
   const [bestDeals, setBestDeals] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -130,13 +133,36 @@ export function ListingsPage() {
     [],
   );
 
-  /** Potential products only — AI rejects and manual dismissals are excluded. */
-  const active = useMemo(
-    () => items.filter((i) => i.status === "active" && !i.notInterested),
+  /** Lifecycle groups shown by the filter buttons. */
+  const interesting = useMemo(
+    () => items.filter((i) => listingStateOf(i) === "interesting"),
     [items],
   );
-  const hidden = useMemo(() => items.filter((i) => i.notInterested), [items]);
-  const source = showHidden ? hidden : active;
+  const hidden = useMemo(
+    () =>
+      items.filter((i) => {
+        const state = listingStateOf(i);
+        return state === "not_interested" || state === "ruled_out";
+      }),
+    [items],
+  );
+  const missing = useMemo(
+    () => items.filter((i) => listingStateOf(i) === "missing"),
+    [items],
+  );
+  const deleted = useMemo(
+    () => items.filter((i) => listingStateOf(i) === "deleted"),
+    [items],
+  );
+
+  const source =
+    view === "hidden"
+      ? hidden
+      : view === "missing"
+        ? missing
+        : view === "deleted"
+          ? deleted
+          : interesting;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -160,7 +186,10 @@ export function ListingsPage() {
     });
   }, [source, query, bestDeals]);
 
-  const dealSignals = useMemo(() => active.filter(hasDealSignal).length, [active]);
+  const dealSignals = useMemo(
+    () => interesting.filter(hasDealSignal).length,
+    [interesting],
+  );
 
   function openDetails(id: string) {
     navigate(`/listings/${encodeURIComponent(id)}`);
@@ -211,7 +240,7 @@ export function ListingsPage() {
   }
 
   function swipeStart(item: ItemView, e: ReactPointerEvent<HTMLLIElement>) {
-    if (e.pointerType === "mouse" || showHidden || item.notInterested) return;
+    if (e.pointerType === "mouse" || view !== "interesting" || listingStateOf(item) !== "interesting") return;
     if (busyId === item.id || exiting.has(item.id)) return;
     if (!e.isPrimary) return;
     swipeRef.current = {
@@ -316,12 +345,14 @@ export function ListingsPage() {
         {
           notInterested: true,
           notInterestedAt: new Date().toISOString(),
+          notInterestedReason: "user",
           available: false,
+          state: "not_interested",
         },
         started,
       );
-      toast("Hidden", {
-        description: "Find it under Hidden",
+      toast("Not interested", {
+        description: "Find it under Not interested",
         action: {
           label: "Undo",
           onClick: () => {
@@ -355,10 +386,16 @@ export function ListingsPage() {
       await api.setNotInterested(item.id, false);
       flipAfterExit(
         item.id,
-        { notInterested: false, notInterestedAt: null, available: item.status === "active" },
+        {
+          notInterested: false,
+          notInterestedAt: null,
+          notInterestedReason: null,
+          available: item.status === "active",
+          state: item.status === "active" ? "interesting" : "missing",
+        },
         started,
       );
-      toast.success("Back in potential products");
+      toast.success("Restored");
     } catch (err) {
       clearExiting(item.id);
       toast.error(err instanceof Error ? err.message : "Update failed");
@@ -368,11 +405,11 @@ export function ListingsPage() {
     }
   }
 
-  function switchView(hiddenView: boolean) {
-    setShowHidden(hiddenView);
+  function switchView(next: ListView) {
+    setView(next);
     setQuery("");
     setSwipe(null);
-    if (hiddenView) setBestDeals(false);
+    if (next !== "interesting") setBestDeals(false);
   }
 
   if (loading) {
@@ -388,36 +425,64 @@ export function ListingsPage() {
   }
 
   const filtered = query.trim().length > 0;
+  const viewNoun =
+    view === "hidden"
+      ? "hidden listings"
+      : view === "missing"
+        ? "missing listings"
+        : view === "deleted"
+          ? "deleted listings"
+          : "interesting listings";
 
   const emptyState = filtered ? (
     <EmptyState
       icon={<Search className="size-5" />}
       title="No matches"
-      description={`Nothing matches “${query.trim()}” in ${
-        showHidden ? "hidden listings" : "potential products"
-      }.`}
+      description={`Nothing matches “${query.trim()}” in ${viewNoun}.`}
       action={
         <Button variant="outline" size="sm" onClick={() => setQuery("")}>
           Clear search
         </Button>
       }
     />
-  ) : showHidden ? (
+  ) : view === "hidden" ? (
     <EmptyState
       icon={<EyeOff className="size-5" />}
       title="Nothing hidden"
-      description="Listings the AI rejects or you dismiss are collected here so you can restore them."
+      description="Listings you mark as not interested and listings ruled out by AI are collected here."
       action={
-        <Button variant="outline" size="sm" onClick={() => switchView(false)}>
-          Back to potential products
+        <Button variant="outline" size="sm" onClick={() => switchView("interesting")}>
+          Back to interesting
+        </Button>
+      }
+    />
+  ) : view === "missing" ? (
+    <EmptyState
+      icon={<Search className="size-5" />}
+      title="Nothing missing"
+      description="Items that disappear from a routine's results are verified here. Items still online stay here; HTTP 404s move to Deleted."
+      action={
+        <Button variant="outline" size="sm" onClick={() => switchView("interesting")}>
+          Back to interesting
+        </Button>
+      }
+    />
+  ) : view === "deleted" ? (
+    <EmptyState
+      icon={<Trash2 className="size-5" />}
+      title="No deleted listings"
+      description="Items verified as HTTP 404/410 are kept here permanently. They are never scraped again."
+      action={
+        <Button variant="outline" size="sm" onClick={() => switchView("interesting")}>
+          Back to interesting
         </Button>
       }
     />
   ) : (
     <EmptyState
       icon={<LayoutList className="size-5" />}
-      title="No potential products"
-      description="New finds from the next scrape will show up here. Listings the AI decides are not a match are hidden automatically."
+      title="No interesting listings"
+      description="New finds from the next scrape will show up here. AI-ruled-out and dismissed items stay under Hidden."
       action={
         <Button variant="outline" size="sm" onClick={() => void load({ soft: true })}>
           <RefreshCw className={cn(refreshing && "animate-spin")} />
@@ -430,21 +495,63 @@ export function ListingsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title={showHidden ? "Hidden listings" : "Listings"}
+        title={
+          view === "hidden"
+            ? "Hidden listings"
+            : view === "missing"
+              ? "Missing from search"
+              : view === "deleted"
+                ? "Deleted listings"
+                : "Listings"
+        }
         description={
-          showHidden
-            ? "Hidden listings — restore anything the AI got wrong."
-            : `${active.length} potential product${active.length === 1 ? "" : "s"}, newest first. AI rejects are hidden automatically.`
+          view === "hidden"
+            ? `${hidden.length} not interested / ruled out — restore anything the AI got wrong.`
+            : view === "missing"
+              ? `${missing.length} disappeared from a routine and still exist online. Re-verified weekly.`
+              : view === "deleted"
+                ? `${deleted.length} verified as 404/deleted. Never checked again.`
+                : `${interesting.length} interesting listing${interesting.length === 1 ? "" : "s"}, newest first. AI-ruled-out and dismissed items are under Hidden.`
         }
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {!showHidden && (
-              <Button variant="ghost" size="sm" onClick={() => switchView(true)}>
-                <EyeOff />
-                Hidden
-              </Button>
-            )}
-            {!showHidden && dealSignals > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              variant={view === "interesting" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => switchView("interesting")}
+            >
+              <LayoutList />
+              Interesting
+              <span className="tabular-nums opacity-70">{interesting.length}</span>
+            </Button>
+            <Button
+              variant={view === "hidden" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => switchView("hidden")}
+            >
+              <EyeOff />
+              Hidden
+              <span className="tabular-nums opacity-70">{hidden.length}</span>
+            </Button>
+            <Button
+              variant={view === "missing" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => switchView("missing")}
+            >
+              <Search />
+              Missing
+              <span className="tabular-nums opacity-70">{missing.length}</span>
+            </Button>
+            <Button
+              variant={view === "deleted" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => switchView("deleted")}
+            >
+              <Trash2 />
+              Deleted
+              <span className="tabular-nums opacity-70">{deleted.length}</span>
+            </Button>
+            {view === "interesting" && dealSignals > 0 && (
               <Button
                 variant={bestDeals ? "secondary" : "ghost"}
                 size="sm"
@@ -453,12 +560,6 @@ export function ListingsPage() {
               >
                 <ArrowDownWideNarrow />
                 Best deals
-              </Button>
-            )}
-            {showHidden && (
-              <Button variant="secondary" size="sm" onClick={() => switchView(false)}>
-                <ArrowLeft />
-                Potential
               </Button>
             )}
             <Button
@@ -481,8 +582,8 @@ export function ListingsPage() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={showHidden ? "Search hidden listings…" : "Search potential products…"}
-            aria-label={showHidden ? "Search hidden listings" : "Search potential products"}
+            placeholder={`Search ${viewNoun}…`}
+            aria-label={`Search ${viewNoun}`}
             className="h-9 pl-8 pr-8"
           />
           {query && (
@@ -516,6 +617,7 @@ export function ListingsPage() {
               const showMarket = Boolean(
                 market && Math.abs(market.deltaPct) >= 5,
               );
+              const itemState = listingStateOf(item);
               const swiping = swipe?.id === item.id;
               const swipeX = swiping ? swipe.x : 0;
               const swipeProgress = Math.min(
@@ -601,10 +703,20 @@ export function ListingsPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {showHidden && (
-                          <Badge variant="secondary">
-                            {item.notInterestedReason === "ai" ? "Hidden by AI" : "Hidden"}
+                        {itemState === "deleted" && (
+                          <Badge variant="destructive">
+                            <Trash2 className="size-3" />
+                            Deleted
                           </Badge>
+                        )}
+                        {itemState === "missing" && (
+                          <Badge variant="warning">Missing from search</Badge>
+                        )}
+                        {itemState === "not_interested" && (
+                          <Badge variant="secondary">Not interested</Badge>
+                        )}
+                        {itemState === "ruled_out" && (
+                          <Badge variant="secondary">Ruled out</Badge>
                         )}
                         {item.deal?.allTimeLow ? (
                           <Badge
@@ -721,7 +833,13 @@ export function ListingsPage() {
                                 </a>
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              {item.notInterested ? (
+                              {itemState === "deleted" ? (
+                                <DropdownMenuItem disabled>
+                                  <Trash2 />
+                                  Deleted permanently
+                                </DropdownMenuItem>
+                              ) : itemState === "not_interested" ||
+                                itemState === "ruled_out" ? (
                                 <DropdownMenuItem
                                   disabled={busyId === item.id}
                                   onSelect={() => void restore(item)}
@@ -729,7 +847,7 @@ export function ListingsPage() {
                                   <RotateCcw />
                                   Restore
                                 </DropdownMenuItem>
-                              ) : (
+                              ) : itemState === "interesting" ? (
                                 <DropdownMenuItem
                                   destructive
                                   disabled={busyId === item.id}
@@ -737,6 +855,11 @@ export function ListingsPage() {
                                 >
                                   <Ban />
                                   Not interested
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem disabled>
+                                  <Search />
+                                  Missing from search
                                 </DropdownMenuItem>
                               )}
                             </DropdownMenuContent>

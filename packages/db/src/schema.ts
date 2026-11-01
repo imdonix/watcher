@@ -72,6 +72,10 @@ export const listings = pgTable("listings", {
   details: jsonb("details").$type<Record<string, unknown> | null>(),
   /** Set after a completed detail attempt (success or fail) — never re-scraped. */
   detailsScrapedAt: timestamp("details_scraped_at", { withTimezone: true }),
+  /** Last time a missing listing was verified via its item page. */
+  lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
+  /** Set when the item page returned 404/410; never verified again. */
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   /**
    * AI evaluation verdict: pass | fail (null = not evaluated) — derived from
    * aiScore >= threshold. A fail also hides the listing (notInterested).

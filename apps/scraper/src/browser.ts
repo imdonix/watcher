@@ -133,10 +133,24 @@ export class BrowserPool {
 
 export async function gotoSmart(page: Page, url: string): Promise<void> {
   await humanDelay(400, 1200);
-  await page.goto(url, { waitUntil: "domcontentloaded" });
+  const response = await page.goto(url, { waitUntil: "domcontentloaded" });
+  if (response && (response.status() === 404 || response.status() === 410)) {
+    throw new PageNotFoundError(url, response.status());
+  }
   // Small random scroll to look human
   await page.mouse.wheel(0, randomBetween(100, 600));
   await humanDelay(300, 900);
+}
+
+/** Thrown when an item page returns HTTP 404/410 (listing was deleted). */
+export class PageNotFoundError extends Error {
+  constructor(
+    public readonly url: string,
+    public readonly status: number,
+  ) {
+    super(`HTTP ${status} for ${url}`);
+    this.name = "PageNotFoundError";
+  }
 }
 
 export const pool = new BrowserPool();

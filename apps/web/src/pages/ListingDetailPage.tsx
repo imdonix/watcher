@@ -23,6 +23,7 @@ import { formatPrice } from "@watcher/shared";
 import { api } from "@/lib/api";
 import { aiScoreVariant } from "@/lib/ai";
 import { formatDateTime, formatEngine, formatRelative } from "@/lib/format";
+import { listingStateLabel, listingStateOf } from "@/lib/listing-state";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -211,21 +212,28 @@ export function ListingDetailPage() {
     if (!listing) return;
     setBusy(true);
     try {
-      const next = !listing.notInterested;
-      await api.setNotInterested(listing.id, next);
+      const updated = await api.setNotInterested(
+        listing.id,
+        !listing.notInterested,
+      );
       setData((prev) =>
         prev
           ? {
               ...prev,
               listing: {
                 ...prev.listing,
-                notInterested: next,
-                notInterestedAt: next ? new Date().toISOString() : null,
+                notInterested: updated.notInterested,
+                notInterestedAt: updated.notInterestedAt ?? null,
+                notInterestedReason: updated.notInterestedReason ?? null,
+                available: updated.available,
+                state: updated.state,
               },
             }
           : prev,
       );
-      toast.success(next ? "Marked not interested" : "Tracking again");
+      toast.success(
+        updated.notInterested ? "Marked not interested" : "Marked interesting",
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -391,7 +399,11 @@ export function ListingDetailPage() {
     );
   }
 
-  const unavailable = listing.status === "missing" || Boolean(listing.notInterested);
+  const listingState = listingStateOf(listing);
+  const unavailable =
+    listing.status === "missing" ||
+    listing.status === "deleted" ||
+    Boolean(listing.notInterested);
   const prevPrice = typeof listing.prevPrice === "number" ? listing.prevPrice : null;
   const curPrice = typeof listing.price === "number" ? listing.price : null;
   const priceDropped = prevPrice != null && curPrice != null && prevPrice > curPrice;
@@ -435,24 +447,26 @@ export function ListingDetailPage() {
           Open original
         </a>
       </Button>
-      <Button
-        variant={listing.notInterested ? "secondary" : "outline"}
-        className="h-11 flex-1 sm:h-9 sm:flex-none"
-        disabled={busy}
-        onClick={() => void toggleInterest()}
-      >
-        {listing.notInterested ? (
-          <>
-            <Heart />
-            Restore
-          </>
-        ) : (
-          <>
-            <Ban />
-            Not interested
-          </>
-        )}
-      </Button>
+      {listingState !== "deleted" && listingState !== "missing" && (
+        <Button
+          variant={listing.notInterested ? "secondary" : "outline"}
+          className="h-11 flex-1 sm:h-9 sm:flex-none"
+          disabled={busy}
+          onClick={() => void toggleInterest()}
+        >
+          {listing.notInterested ? (
+            <>
+              <Heart />
+              Restore
+            </>
+          ) : (
+            <>
+              <Ban />
+              Not interested
+            </>
+          )}
+        </Button>
+      )}
     </>
   );
 
@@ -511,17 +525,25 @@ export function ListingDetailPage() {
 
               <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
                 <div className="flex flex-wrap gap-1.5">
-                  {listing.notInterested ? (
-                    <Badge variant="secondary" className="shadow-sm">
-                      {listing.notInterestedReason === "ai" ? "Hidden by AI" : "Hidden"}
+                  {listingState === "deleted" ? (
+                    <Badge variant="destructive" className="shadow-sm">
+                      Deleted
                     </Badge>
-                  ) : listing.status === "missing" ? (
+                  ) : listingState === "ruled_out" ? (
+                    <Badge variant="secondary" className="shadow-sm">
+                      Ruled out
+                    </Badge>
+                  ) : listingState === "not_interested" ? (
+                    <Badge variant="secondary" className="shadow-sm">
+                      Not interested
+                    </Badge>
+                  ) : listingState === "missing" ? (
                     <Badge variant="warning" className="shadow-sm">
-                      No longer available
+                      Missing from search
                     </Badge>
                   ) : (
                     <Badge variant="success" className="shadow-sm">
-                      Available
+                      Interesting
                     </Badge>
                   )}
                   {hasEvaluation && (
@@ -616,12 +638,18 @@ export function ListingDetailPage() {
                       </Badge>
                     )}
                     {!listing.detailsScrapedAt && <Badge variant="secondary">Details pending</Badge>}
-                    {listing.notInterested && (
-                      <Badge variant="secondary">
-                        {listing.notInterestedReason === "ai" ? "Hidden by AI" : "Not interested"}
-                      </Badge>
+                    {listingState === "deleted" && (
+                      <Badge variant="destructive">Deleted</Badge>
                     )}
-                    {listing.status === "missing" && <Badge variant="warning">Gone from search</Badge>}
+                    {listingState === "missing" && (
+                      <Badge variant="warning">Missing from search</Badge>
+                    )}
+                    {listingState === "ruled_out" && (
+                      <Badge variant="secondary">Ruled out</Badge>
+                    )}
+                    {listingState === "not_interested" && (
+                      <Badge variant="secondary">Not interested</Badge>
+                    )}
                   </div>
                 </div>
                 <div className="shrink-0 sm:text-right">
@@ -686,11 +714,11 @@ export function ListingDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {listing.notInterested && (
+              {listingState !== "deleted" && listing.notInterested && (
                 <div className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
                   {listing.notInterestedReason === "ai" ? (
                     <>
-                      <span className="font-medium text-foreground">Hidden by the AI evaluation</span>
+                      <span className="font-medium text-foreground">Ruled out by AI check</span>
                       {listing.notInterestedAt
                         ? ` ${formatRelative(listing.notInterestedAt)}`
                         : ""}
@@ -918,13 +946,16 @@ export function ListingDetailPage() {
                           <div className="flex flex-wrap items-center gap-2">
                             <Badge
                               variant={
-                                e.kind === "missing"
-                                  ? "warning"
-                                  : e.kind === "price_change"
-                                    ? "info"
-                                    : e.kind === "first_seen" || e.kind === "target_hit"
-                                      ? "success"
-                                      : "secondary"
+                                e.kind === "deleted"
+                                  ? "destructive"
+                                  : e.kind === "missing"
+                                    ? "warning"
+                                    : e.kind === "price_change"
+                                      ? "info"
+                                      : e.kind === "first_seen" ||
+                                          e.kind === "target_hit"
+                                        ? "success"
+                                        : "secondary"
                               }
                               className="capitalize"
                             >
@@ -1225,20 +1256,7 @@ export function ListingDetailPage() {
             </CardHeader>
             <CardContent>
               <dl className="divide-y">
-                <GlanceRow
-                  label="On site"
-                  value={listing.status === "active" ? "Listed" : "Gone from search"}
-                />
-                <GlanceRow
-                  label="Interest"
-                  value={
-                    listing.notInterested
-                      ? listing.notInterestedReason === "ai"
-                        ? "Hidden by AI"
-                        : "Dismissed"
-                      : "Tracking"
-                  }
-                />
+                <GlanceRow label="State" value={listingStateLabel(listingState)} />
                 <GlanceRow label="Site" value={formatEngine(listing.engineSlug) || "—"} />
                 <GlanceRow label="First seen" value={formatDateTime(listing.firstSeenAt)} />
                 <GlanceRow label="Last seen" value={formatDateTime(listing.lastSeenAt)} />
@@ -1250,12 +1268,24 @@ export function ListingDetailPage() {
                       : "Pending"
                   }
                 />
+                {listing.lastVerifiedAt && (
+                  <GlanceRow
+                    label="Last verified"
+                    value={formatDateTime(listing.lastVerifiedAt)}
+                  />
+                )}
+                {listing.deletedAt && (
+                  <GlanceRow
+                    label="Deleted at"
+                    value={formatDateTime(listing.deletedAt)}
+                  />
+                )}
                 <GlanceRow label="Observations" value={data.sightings.length} />
                 <GlanceRow label="Events" value={data.events.length} />
               </dl>
               <p className="border-t pt-3 text-[11px] leading-relaxed text-muted-foreground">
-                Missing is only set after a complete scrape — partial failures never mark
-                items gone.
+                Missing items are verified from their item page. HTTP 404/410 marks
+                them deleted permanently; partial scrapes never mark items gone.
               </p>
             </CardContent>
           </Card>

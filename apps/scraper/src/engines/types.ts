@@ -21,6 +21,7 @@ export interface EngineScrapeResult {
 /** Engine-owned result of scraping one listing detail page */
 export interface EngineItemScrapeResult {
   details: ListingItemDetails | null;
+  deleted?: boolean;
   name?: string | null;
   price?: number | null;
   image?: string | null;

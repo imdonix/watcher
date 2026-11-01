@@ -126,6 +126,9 @@ export async function ingestRoutineScrape(
         lastSeenAt: now,
         updatedAt: now,
         status: "active",
+        // Seen again in a routine result → shell/lifecycle markers are stale.
+        lastVerifiedAt: null,
+        deletedAt: null,
       };
 
       if (contentChanged) {
@@ -151,7 +154,7 @@ export async function ingestRoutineScrape(
         log("Ingest", `listing ${id}: price change cleared not_interested`);
       }
 
-      if (row.status === "missing") {
+      if (row.status === "missing" || row.status === "deleted") {
         await db.insert(listingEvents).values({
           listingId: id,
           scrapeRunId,

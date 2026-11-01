@@ -7,7 +7,7 @@ import type {
   ShopPriceRequest,
   ShopPriceResult,
 } from "@watcher/shared";
-import { pool } from "./browser";
+import { PageNotFoundError, pool } from "./browser";
 import { getScraper, listEngines } from "./engines";
 import { lookupShopPrice } from "./shop-price";
 import { log, logError } from "./lib/log";
@@ -150,6 +150,7 @@ app.post("/scrape-item", async (c) => {
       engine: scraper.slug,
       url,
       details: result.details,
+      deleted: result.deleted,
       name: result.name,
       price: result.price,
       image: result.image,
@@ -158,6 +159,21 @@ app.post("/scrape-item", async (c) => {
     } satisfies ScrapeItemResult);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    if (err instanceof PageNotFoundError) {
+      log("ScrapeItem", `${scraper.slug}: deleted (${message})`);
+      return c.json(
+        {
+          ok: false,
+          engine: scraper.slug,
+          url,
+          details: null,
+          deleted: true,
+          error: message,
+          durationMs: Date.now() - started,
+        } satisfies ScrapeItemResult,
+        200,
+      );
+    }
     logError("ScrapeItem", `${scraper.slug}: ${message}`);
     return c.json(
       {
