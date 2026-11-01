@@ -1,9 +1,11 @@
 import { Hono } from "hono";
+import playwrightPackage from "playwright/package.json" with { type: "json" };
 import type {
   ScrapeItemRequest,
   ScrapeItemResult,
   ScrapeJobRequest,
   ScrapeJobResult,
+  ServiceVersion,
   ShopPriceRequest,
   ShopPriceResult,
 } from "@watcher/shared";
@@ -16,7 +18,15 @@ const port = Number(process.env.SCRAPER_PORT || 3001);
 
 const app = new Hono();
 
-app.get("/health", (c) => c.json({ ok: true, service: "scraper" }));
+app.get("/health", (c) => {
+  const versions: ServiceVersion[] = [
+    { name: "Bun", version: Bun.version },
+    { name: "Playwright", version: playwrightPackage.version },
+  ];
+  const chromium = pool.chromiumVersion();
+  if (chromium) versions.push({ name: "Chromium", version: chromium });
+  return c.json({ ok: true, service: "scraper", versions });
+});
 
 app.get("/engines", (c) => c.json(listEngines()));
 

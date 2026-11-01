@@ -359,6 +359,19 @@ export function StatusPage() {
             <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
               {s.detail}
             </p>
+            {s.versions && s.versions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {s.versions.map((v) => (
+                  <span
+                    key={`${v.name}-${v.version}`}
+                    className="rounded-md border bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] leading-4 text-muted-foreground"
+                  >
+                    {v.name}{" "}
+                    <span className="text-foreground/80">{v.version}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>

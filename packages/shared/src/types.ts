@@ -292,10 +292,19 @@ export interface SchedulerStatus {
   scrapeProgress?: ScrapeProgress | null;
 }
 
+export interface ServiceVersion {
+  /** Human-readable component name, e.g. "Bun", "Hono", "PostgreSQL" */
+  name: string;
+  /** Version string as reported by the component */
+  version: string;
+}
+
 export interface ServiceHealth {
   name: string;
   ok: boolean;
   detail?: string;
+  /** Notable runtime/library versions backing this service */
+  versions?: ServiceVersion[];
 }
 
 export interface ScrapeRunSummary {

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createRequire } from "node:module";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import {
   scrapeRoutineResults,
@@ -20,6 +21,17 @@ import {
 } from "@watcher/shared";
 
 const STATUS_RUNS_LIMIT = 10;
+const requirePackage = createRequire(import.meta.url);
+
+/** Read a dependency's declared version without importing its internals. */
+function packageVersion(name: string): string {
+  try {
+    const pkg = requirePackage(`${name}/package.json`) as { version?: string };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 function mapRun(r: typeof scrapeRuns.$inferSelect) {
   return {
@@ -69,10 +81,10 @@ export function jobRoutes(db: Database) {
   });
 
   app.get("/health", async (c) => {
-    const scraperOk = await scraperHealth();
+    const scraper = await scraperHealth();
     return c.json({
       ok: true,
-      scraper: scraperOk,
+      scraper: scraper.ok,
       transports: transportsStatus(),
       engines: ENGINES.length,
     });
@@ -91,14 +103,18 @@ export function jobRoutes(db: Database) {
   app.get("/status", requireAuth, async (c) => {
     let dbOk = false;
     let dbDetail = "";
+    let pgVersion: string | null = null;
     try {
-      await db.execute(sql`SELECT 1`);
+      const rows = await db.execute<{ version: string }>(
+        sql`SELECT current_setting('server_version') AS version`,
+      );
+      pgVersion = rows[0]?.version ?? null;
       dbOk = true;
     } catch (err) {
       dbDetail = String(err);
     }
 
-    const scraperOk = await scraperHealth();
+    const scraper = await scraperHealth();
     const runs = await db
       .select()
       .from(scrapeRuns)
@@ -108,19 +124,39 @@ export function jobRoutes(db: Database) {
     const scheduler = getSchedulerStatus();
 
     return c.json({
-      ok: dbOk && scraperOk,
+      ok: dbOk && scraper.ok,
       services: [
-        { name: "api", ok: true, detail: "up" },
-        { name: "database", ok: dbOk, detail: dbOk ? "reachable" : dbDetail },
+        {
+          name: "api",
+          ok: true,
+          detail: "up",
+          versions: [
+            { name: "Bun", version: Bun.version },
+            { name: "Hono", version: packageVersion("hono") },
+          ],
+        },
+        {
+          name: "database",
+          ok: dbOk,
+          detail: dbOk ? "reachable" : dbDetail,
+          versions: dbOk
+            ? [
+                ...(pgVersion ? [{ name: "PostgreSQL", version: pgVersion }] : []),
+                { name: "postgres.js", version: packageVersion("postgres") },
+              ]
+            : [],
+        },
         {
           name: "scraper",
-          ok: scraperOk,
-          detail: scraperOk ? "healthy" : "unreachable",
+          ok: scraper.ok,
+          detail: scraper.ok ? "healthy" : "unreachable",
+          versions: scraper.versions,
         },
         {
           name: "web-push",
           ok: isPushConfigured(),
           detail: isPushConfigured() ? "vapid configured" : "not configured",
+          versions: [{ name: "web-push", version: packageVersion("web-push") }],
         },
       ],
       scheduler,

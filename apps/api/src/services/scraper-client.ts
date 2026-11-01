@@ -3,6 +3,7 @@ import type {
   ScrapeItemResult,
   ScrapeJobRequest,
   ScrapeJobResult,
+  ServiceVersion,
   ShopPriceRequest,
   ShopPriceResult,
 } from "@watcher/shared";
@@ -139,14 +140,26 @@ export async function runShopPrice(req: ShopPriceRequest): Promise<ShopPriceResu
   }
 }
 
-export async function scraperHealth(): Promise<boolean> {
+export interface ScraperHealth {
+  ok: boolean;
+  versions: ServiceVersion[];
+}
+
+export async function scraperHealth(): Promise<ScraperHealth> {
   try {
     const res = await fetch(`${env.scraperUrl.replace(/\/$/, "")}/health`, {
       signal: AbortSignal.timeout(5_000),
     });
-    return res.ok;
+    if (!res.ok) return { ok: false, versions: [] };
+    const body = (await res.json().catch(() => null)) as {
+      versions?: ServiceVersion[];
+    } | null;
+    return {
+      ok: true,
+      versions: Array.isArray(body?.versions) ? body.versions : [],
+    };
   } catch {
-    return false;
+    return { ok: false, versions: [] };
   }
 }
 

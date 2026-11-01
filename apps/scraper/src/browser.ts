@@ -45,6 +45,11 @@ export class BrowserPool {
     }
   }
 
+  /** Chromium build version reported by Playwright, if the browser is running. */
+  chromiumVersion(): string | null {
+    return this.browser?.version() ?? null;
+  }
+
   private async acquire(): Promise<void> {
     if (this.active < this.maxConcurrency) {
       this.active++;
