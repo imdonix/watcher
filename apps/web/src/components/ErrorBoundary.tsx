@@ -32,9 +32,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   private resetCachesAndReload = async () => {
     try {
-      sessionStorage.removeItem("watcher_asset_recovery");
+      sessionStorage.removeItem("watcher_boot_recovery");
     } catch {
       /* storage unavailable */
+    }
+    // Wiping the only cached copy while offline would leave the installed PWA
+    // permanently blank; a normal reload is the best we can do then.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      window.location.reload();
+      return;
     }
     try {
       if ("serviceWorker" in navigator) {

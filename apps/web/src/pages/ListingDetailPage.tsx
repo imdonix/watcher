@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
@@ -141,7 +141,6 @@ function GlanceRow({ label, value }: { label: string; value: React.ReactNode }) 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const [data, setData] = useState<ListingDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -361,20 +360,23 @@ export function ListingDetailPage() {
   }
 
   /**
-   * Use real history back instead of pushing another /listings entry.
-   * Pushing on every visit makes the iOS back gesture walk a long
-   * detail → list → detail chain, remounting the list each time.
+   * Always replace the detail entry with /listings instead of using
+   * history.back().
+   *
+   * In an installed PWA (iOS especially) the history stack can contain
+   * entries that belong to a previous document — for example after iOS
+   * discarded and restored the page, or when the app was opened from a push
+   * notification. Calling back() across such an entry triggers a real
+   * network navigation, which is exactly where the blank white screen came
+   * from. Replacing stays inside the current document, and it also keeps the
+   * stack short instead of growing a detail → list → detail chain.
    */
   function backToListings(e: React.MouseEvent<HTMLAnchorElement>) {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
       return;
     }
     e.preventDefault();
-    if (location.key !== "default") {
-      navigate(-1);
-    } else {
-      navigate("/listings", { replace: true });
-    }
+    navigate("/listings", { replace: true });
   }
 
   if (loading) return <PageLoader label="Loading listing…" />;

@@ -31,9 +31,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .me()
       .then(() => setAuthenticated(true))
-      .catch(() => {
-        setToken(null);
-        setAuthenticated(false);
+      .catch((err) => {
+        // Only a rejected token logs the user out. A transient network error
+        // (very common when iOS resumes a suspended PWA) must not wipe the
+        // saved token and bounce the user to the login screen.
+        if (err instanceof Error && err.message === "Unauthorized") {
+          setToken(null);
+          setAuthenticated(false);
+        } else {
+          setAuthenticated(true);
+        }
       })
       .finally(() => setLoading(false));
   }, []);

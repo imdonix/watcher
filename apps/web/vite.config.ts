@@ -26,7 +26,11 @@ export default defineConfig({
         display: "standalone",
         orientation: "any",
         scope: "/",
-        start_url: "/",
+        // Launch straight into the list instead of "/" → React Router redirect.
+        // Avoiding a replaceState during the iOS launch animation removes one
+        // more chance for standalone WebKit to strand the window on a blank
+        // snapshot.
+        start_url: "/listings",
         lang: "en",
         categories: ["shopping", "utilities"],
         icons: [

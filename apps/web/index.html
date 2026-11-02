@@ -13,22 +13,107 @@
     <title>Watcher</title>
     <script>
       // Blank-screen recovery for the installed PWA (mostly iOS): a stale
-      // cached document can point at JS chunks from an older deploy, so the
-      // app never mounts and the screen stays blank (white or black).
-      // Drop the service worker + caches once per session, then reload.
+      // cached document can point at JS chunks from an older deploy, or iOS
+      // can restore a standalone page from the back/forward cache with an
+      // empty document after a back gesture. In both cases the app never
+      // mounts and the screen stays blank (white or black) — with no address
+      // bar to recover from.
+      //
+      // Rules:
+      // 1. Show a small fallback UI instead of ever leaving a blank screen.
+      // 2. Never wipe the service worker/caches while offline — that deletes
+      //    the only copy of the app and turns a temporary blank into a
+      //    permanent white screen.
+      // 3. At most a couple of automatic recovery reloads per session.
       (function () {
-        var KEY = "watcher_asset_recovery";
-        var started = false;
+        var KEY = "watcher_boot_recovery";
+        var overlay = null;
 
-        function recover() {
-          if (started) return;
-          started = true;
+        // This script runs in <head>, before #root exists, so look it up
+        // lazily every time instead of capturing null here.
+        function rootEl() {
+          return document.getElementById("root");
+        }
+
+        function rootEmpty() {
+          var root = rootEl();
+          return !root || root.childNodes.length === 0;
+        }
+
+        function online() {
           try {
-            if (sessionStorage.getItem(KEY)) return;
-            sessionStorage.setItem(KEY, "1");
+            return navigator.onLine !== false;
           } catch (err) {
-            return; // no storage → cannot guard against reload loops
+            return true;
           }
+        }
+
+        function attempts() {
+          try {
+            return Number(sessionStorage.getItem(KEY)) || 0;
+          } catch (err) {
+            return 99; // no storage → never auto-recover in a loop
+          }
+        }
+
+        function setAttempts(n) {
+          try {
+            sessionStorage.setItem(KEY, String(n));
+          } catch (err) {
+            /* storage unavailable */
+          }
+        }
+
+        function showFallback(offline) {
+          if (overlay || !document.body) return;
+          overlay = document.createElement("div");
+          overlay.id = "watcher-fallback";
+          overlay.setAttribute("role", "alert");
+          overlay.style.cssText =
+            "position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;" +
+            "justify-content:center;padding:24px;background:#f7f8fa;color:#111827;" +
+            "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;text-align:center;";
+          overlay.innerHTML =
+            '<main style="max-width:22rem">' +
+            '<h1 style="margin:0 0 8px;font-size:18px;letter-spacing:-0.01em">Watcher hit a snag</h1>' +
+            '<p style="margin:0 0 20px;font-size:14px;line-height:1.55;color:#6b7280">' +
+            (offline
+              ? "You are offline and the saved app copy could not start. Reconnect and try again."
+              : "The saved app copy could not start. Reload to try again.") +
+            "</p>" +
+            '<button id="watcher-retry" type="button" style="appearance:none;border:0;' +
+            "border-radius:999px;background:#3b5bdb;color:#fff;font:inherit;font-weight:600;" +
+            'padding:11px 22px">Reload</button>' +
+            "</main>";
+          document.body.appendChild(overlay);
+          var btn = document.getElementById("watcher-retry");
+          if (btn) {
+            btn.addEventListener("click", function () {
+              hardRecover(true);
+            });
+          }
+        }
+
+        function hideFallback() {
+          if (!overlay) return;
+          overlay.remove();
+          overlay = null;
+        }
+
+        function hardRecover(userInitiated) {
+          // Never erase the only cached copy while offline. If the user taps
+          // Reload we still refuse — reconnecting is the only useful action.
+          if (!online()) {
+            showFallback(true);
+            return;
+          }
+
+          var n = attempts();
+          if (n >= 2 && !userInitiated) {
+            showFallback(false);
+            return;
+          }
+          setAttempts(Math.min(n + 1, 2));
 
           var reload = function () {
             location.reload();
@@ -54,7 +139,32 @@
             });
           };
 
+          // Show something immediately, then swap the worker/cache and reload.
+          showFallback(false);
           Promise.resolve().then(unregister).then(clearCaches).then(reload, reload);
+        }
+
+        // React replaces the contents of #root on its first render. Once that
+        // happens the app is alive, so drop the fallback and reset the counter.
+        function watchRoot() {
+          var root = rootEl();
+          if (!root) return;
+          new MutationObserver(function () {
+            if (!rootEmpty()) {
+              hideFallback();
+              try {
+                sessionStorage.removeItem(KEY);
+              } catch (err) {
+                /* storage unavailable */
+              }
+            }
+          }).observe(root, { childList: true });
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", watchRoot);
+        } else {
+          watchRoot();
         }
 
         // A chunk that fails to load (404 after a deploy) fires `error` on the
@@ -65,20 +175,71 @@
             var el = event.target;
             if (el && el.tagName === "SCRIPT") {
               var src = el.src || "";
-              if (src.indexOf("/assets/") !== -1) recover();
+              if (src.indexOf("/assets/") !== -1) hardRecover(false);
             }
           },
           true,
         );
 
-        // Fallback when nothing rendered and we cannot know why. Only runs when
+        // Fallback when nothing rendered and we cannot know why. Shorter than
+        // the old 12s so the user is not left staring at white. Only runs when
         // a service worker is controlling the page (i.e. installed PWA), so it
         // never interferes with `vite dev`.
         setTimeout(function () {
           if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
-          var root = document.getElementById("root");
-          if (!root || root.childNodes.length === 0) recover();
-        }, 12000);
+          if (!rootEmpty()) return;
+
+          // Try one clean reload first; only drop the worker/cache if that
+          // did not help.
+          if (online() && attempts() === 0) {
+            setAttempts(1);
+            showFallback(false);
+            location.reload();
+            return;
+          }
+          hardRecover(false);
+        }, 5000);
+
+        // iOS sometimes restores a standalone page from the back/forward
+        // cache with an empty document after a back gesture. Reload instead
+        // of leaving the user on a blank screen.
+        window.addEventListener("pageshow", function (event) {
+          if (!event.persisted) return;
+          setTimeout(function () {
+            if (!rootEmpty()) return;
+            if (online()) hardRecover(false);
+            else showFallback(true);
+          }, 250);
+        });
+
+        // A back/forward traversal is where the standalone window has been
+        // reported to go blank. React keeps the old DOM until it commits, so
+        // an empty root shortly after popstate means the page really lost its
+        // content.
+        window.addEventListener("popstate", function () {
+          setTimeout(function () {
+            if (!rootEmpty()) return;
+            if (online()) hardRecover(false);
+            else showFallback(true);
+          }, 500);
+        });
+
+        // Same for a resume from the app switcher: only check after the page
+        // was actually hidden, so a slow first boot is not mistaken for a
+        // crash.
+        var wasHidden = false;
+        document.addEventListener("visibilitychange", function () {
+          if (document.visibilityState === "hidden") {
+            wasHidden = true;
+            return;
+          }
+          if (!wasHidden || !rootEmpty()) return;
+          setTimeout(function () {
+            if (!rootEmpty()) return;
+            if (online()) hardRecover(false);
+            else showFallback(true);
+          }, 500);
+        });
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
